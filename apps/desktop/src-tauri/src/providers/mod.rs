@@ -2,6 +2,7 @@ mod ccswitch;
 mod connection;
 mod live;
 mod official_auth;
+mod selection;
 mod store;
 
 use crate::error::Result;
@@ -40,6 +41,10 @@ pub(crate) use official_auth::{
     document_is_official, get_official_config_draft_inner, official_auth_available,
     OfficialConfigDraft,
 };
+pub(crate) use selection::{
+    clear_active_provider_on_connection, clear_provider_selections_on_connection,
+    reconcile_active_provider_on_connection, remember_active_provider_on_connection,
+};
 #[cfg(test)]
 pub(crate) use store::{
     canonical_provider_base_url, provider_by_id_on_connection, provider_identity,
@@ -50,10 +55,11 @@ pub(crate) use store::{
     delete_provider_inner, experimental_bearer_token_from_doc, is_placeholder_provider,
     list_saved_providers_inner, list_saved_providers_on_connection,
     matching_saved_provider_ids_for_live, normalize_saved_provider,
-    provider_template_from_document, reserved_codex_provider_id, rollback_provider_store_inner,
-    save_provider_inner, save_provider_with_rollback_inner, strip_provider_bearer_tokens,
-    unique_saved_provider_id_for_live, upsert_ccswitch_provider_on_connection,
-    ProviderStoreRollback, ProviderUpsertKind, SavedProvider,
+    normalize_saved_provider_for_save, provider_template_from_document, reserved_codex_provider_id,
+    rollback_provider_store_inner, save_provider_inner, save_provider_with_rollback_inner,
+    strip_provider_bearer_tokens, unique_saved_provider_id_for_live,
+    upsert_ccswitch_provider_on_connection, ProviderStoreRollback, ProviderUpsertKind,
+    SavedProvider,
 };
 
 pub(crate) fn open_store() -> Result<Connection> {

@@ -100,7 +100,10 @@ pub(crate) fn setup_system_tray(app: &tauri::App) -> tauri::Result<()> {
 }
 
 pub(crate) fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
-    if window.label() != MAIN_WINDOW_LABEL {
+    if !should_hide_main_window(
+        window.label(),
+        matches!(event, WindowEvent::CloseRequested { .. }),
+    ) {
         return;
     }
 
@@ -123,12 +126,34 @@ pub(crate) fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
     }
 }
 
-pub(crate) fn handle_run_event(app: &tauri::AppHandle, event: tauri::RunEvent) {
-    #[cfg(target_os = "macos")]
-    if let tauri::RunEvent::Reopen { .. } = event {
-        restore_main_window(app);
-    }
+fn should_hide_main_window(label: &str, close_requested: bool) -> bool {
+    label == MAIN_WINDOW_LABEL && close_requested
+}
 
-    #[cfg(not(target_os = "macos"))]
-    let _ = (app, event);
+pub(crate) fn handle_run_event(app: &tauri::AppHandle, event: tauri::RunEvent) {
+    match event {
+        tauri::RunEvent::ExitRequested { api, .. } => {
+            if let Err(error) = crate::gateway::shutdown_on_exit() {
+                eprintln!("failed to preserve gateway state before exit: {error}");
+                api.prevent_exit();
+            }
+        }
+        #[cfg(target_os = "macos")]
+        tauri::RunEvent::Reopen { .. } => restore_main_window(app),
+        _ => {
+            let _ = app;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn main_window_close_hides_to_tray_but_other_events_do_not() {
+        assert!(should_hide_main_window(MAIN_WINDOW_LABEL, true));
+        assert!(!should_hide_main_window(MAIN_WINDOW_LABEL, false));
+        assert!(!should_hide_main_window("settings", true));
+    }
 }

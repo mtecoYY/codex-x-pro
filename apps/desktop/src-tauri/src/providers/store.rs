@@ -1,9 +1,9 @@
-use super::open_store as open_db;
+use super::{clear_provider_selections_on_connection, open_store as open_db};
 use crate::error::{CodexxError, Result};
 use crate::{now_rfc3339, sanitize_id};
 use rusqlite::{params, Connection, TransactionBehavior};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use toml_edit::{value, DocumentMut};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -43,6 +43,13 @@ pub(crate) enum ProviderIdentity {
     Unauthenticated { base_url: String, name: String },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ProviderProfileIdentity {
+    // Matching helper only; manually saved rows are always addressed by ID.
+    provider: ProviderIdentity,
+    model: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ProviderUpsertMode {
     Manual,
@@ -53,7 +60,6 @@ pub(crate) enum ProviderUpsertMode {
 pub(crate) enum ProviderUpsertKind {
     Added,
     Updated,
-    Merged,
 }
 
 #[derive(Debug, Clone)]
@@ -161,6 +167,13 @@ pub(crate) fn provider_identity(provider: &SavedProvider) -> Option<ProviderIden
     (!name.is_empty()).then_some(ProviderIdentity::Unauthenticated { base_url, name })
 }
 
+fn provider_profile_identity(provider: &SavedProvider) -> Option<ProviderProfileIdentity> {
+    provider_identity(provider).map(|identity| ProviderProfileIdentity {
+        provider: identity,
+        model: provider.model.trim().to_string(),
+    })
+}
+
 pub(crate) fn provider_template_from_document(
     doc: &DocumentMut,
     provider_id: &str,
@@ -211,8 +224,12 @@ fn same_provider_endpoint_and_name(left: &SavedProvider, right: &SavedProvider) 
             == normalized_provider_name(&right.provider_name)
 }
 
+fn same_provider_profile_fallback(left: &SavedProvider, right: &SavedProvider) -> bool {
+    same_provider_endpoint_and_name(left, right) && left.model.trim() == right.model.trim()
+}
+
 fn compatible_provider_match(left: &SavedProvider, right: &SavedProvider) -> bool {
-    if !same_provider_endpoint_and_name(left, right) {
+    if !same_provider_profile_fallback(left, right) {
         return false;
     }
     match (
@@ -224,30 +241,16 @@ fn compatible_provider_match(left: &SavedProvider, right: &SavedProvider) -> boo
     }
 }
 
-fn unique_compatible_provider<'a>(
-    stored: &'a [StoredProvider],
-    incoming: &SavedProvider,
-) -> Option<&'a StoredProvider> {
-    let mut matches = stored
-        .iter()
-        .filter(|candidate| compatible_provider_match(&candidate.provider, incoming));
-    let candidate = matches.next()?;
-    matches.next().is_none().then_some(candidate)
-}
-
 pub(crate) fn matching_saved_provider_ids_for_live(
     live: &SavedProvider,
     providers: &[SavedProvider],
 ) -> Vec<String> {
-    let stable = providers
-        .iter()
-        .filter(|candidate| !is_historical_custom_provider_id(&candidate.id))
-        .collect::<Vec<_>>();
-    if let Some(identity) = provider_identity(live) {
-        let exact = stable
+    let candidates = providers.iter().collect::<Vec<_>>();
+    if let Some(identity) = provider_profile_identity(live) {
+        let exact = candidates
             .iter()
             .copied()
-            .filter(|candidate| provider_identity(candidate).as_ref() == Some(&identity))
+            .filter(|candidate| provider_profile_identity(candidate).as_ref() == Some(&identity))
             .collect::<Vec<_>>();
         if !exact.is_empty() {
             return exact
@@ -257,7 +260,7 @@ pub(crate) fn matching_saved_provider_ids_for_live(
         }
     }
 
-    let compatible = stable
+    let compatible = candidates
         .iter()
         .copied()
         .filter(|candidate| compatible_provider_match(live, candidate))
@@ -272,9 +275,9 @@ pub(crate) fn matching_saved_provider_ids_for_live(
     if !is_historical_custom_provider_id(&live.id) {
         return Vec::new();
     }
-    stable
+    candidates
         .into_iter()
-        .filter(|candidate| same_provider_endpoint_and_name(live, candidate))
+        .filter(|candidate| same_provider_profile_fallback(live, candidate))
         .map(|candidate| candidate.id.clone())
         .collect()
 }
@@ -306,7 +309,7 @@ fn stored_providers_on_connection(conn: &Connection) -> Result<Vec<StoredProvide
             "SELECT id, provider_name, base_url, model, api_key, toml_config, wire_api,
                     requires_openai_auth, created_at, updated_at, source, source_id
              FROM providers
-             ORDER BY created_at ASC, updated_at ASC, id ASC",
+             ORDER BY created_at ASC, rowid ASC",
         )
         .map_err(|e| CodexxError::Database(e.to_string()))?;
     let rows = stmt
@@ -478,34 +481,6 @@ fn source_matches(row: &StoredProvider, origin: (&str, &str)) -> bool {
     source_matches && row.source_id.as_deref() == Some(origin.1)
 }
 
-fn source_can_merge(row: &StoredProvider, origin: Option<(&str, &str)>) -> bool {
-    match origin {
-        None => true,
-        Some(origin) => row.source == MANUAL_PROVIDER_SOURCE || source_matches(row, origin),
-    }
-}
-
-fn conflicting_provider_ids(
-    stored: &[StoredProvider],
-    provider: &SavedProvider,
-    origin: Option<(&str, &str)>,
-) -> Vec<String> {
-    let identity = provider_identity(provider);
-    stored
-        .iter()
-        .filter(|candidate| candidate.provider.id != provider.id)
-        .filter(|candidate| source_can_merge(candidate, origin))
-        .filter(|candidate| {
-            identity.as_ref().is_some_and(|identity| {
-                provider_identity(&candidate.provider).as_ref() == Some(identity)
-            }) || (is_historical_custom_provider_id(&candidate.provider.id)
-                && !is_historical_custom_provider_id(&provider.id)
-                && same_provider_endpoint_and_name(&candidate.provider, provider))
-        })
-        .map(|candidate| candidate.provider.id.clone())
-        .collect()
-}
-
 fn upsert_provider_in_savepoint(
     conn: &Connection,
     mut provider: SavedProvider,
@@ -513,70 +488,27 @@ fn upsert_provider_in_savepoint(
     origin: Option<(&str, &str)>,
 ) -> Result<ProviderUpsertResult> {
     let requested_id = provider.id.clone();
-    let identity = provider_identity(&provider);
     let stored = stored_providers_on_connection(conn)?;
     let source_match = origin.and_then(|origin| {
         stored
             .iter()
             .find(|candidate| source_matches(candidate, origin))
     });
-    let merge_candidates = stored
-        .iter()
-        .filter(|candidate| source_can_merge(candidate, origin))
-        .cloned()
-        .collect::<Vec<_>>();
-    let identity_match = identity.as_ref().and_then(|identity| {
-        merge_candidates
-            .iter()
-            .find(|candidate| provider_identity(&candidate.provider).as_ref() == Some(identity))
-    });
-    let manual_candidates = stored
-        .iter()
-        .filter(|candidate| candidate.source == MANUAL_PROVIDER_SOURCE)
-        .cloned()
-        .collect::<Vec<_>>();
-    let manual_identity_match = identity.as_ref().and_then(|identity| {
-        manual_candidates
-            .iter()
-            .find(|candidate| provider_identity(&candidate.provider).as_ref() == Some(identity))
-    });
-    let manual_compatible_match = unique_compatible_provider(&manual_candidates, &provider);
     let exact_id_match = stored
         .iter()
         .find(|candidate| candidate.provider.id == requested_id);
-    let compatible_match = unique_compatible_provider(&merge_candidates, &provider);
-    let import_rehome_target = source_match.and_then(|source| {
-        manual_identity_match
-            .or(manual_compatible_match)
-            .filter(|candidate| candidate.provider.id != source.provider.id)
-    });
 
     let target = match mode {
-        ProviderUpsertMode::Manual => exact_id_match.or(identity_match).or(compatible_match),
-        ProviderUpsertMode::Imported => import_rehome_target
-            .or(source_match)
-            .or(identity_match)
-            .or(compatible_match),
+        ProviderUpsertMode::Manual => exact_id_match,
+        ProviderUpsertMode::Imported => source_match,
     };
-    let preserves_local_id = mode == ProviderUpsertMode::Imported
-        && target.is_some_and(|candidate| {
-            candidate.source == MANUAL_PROVIDER_SOURCE
-                || candidate.source == CCSWITCH_LOCAL_PROVIDER_SOURCE
-        });
     let kind = if let Some(target) = target {
         let existing = &target.provider;
-        let same_id = existing.id == requested_id;
         provider.id = existing.id.clone();
         if mode == ProviderUpsertMode::Imported {
             provider = merge_authoritative_import(provider, existing);
         }
-        if import_rehome_target.is_some() {
-            ProviderUpsertKind::Merged
-        } else if source_match.is_some() || same_id {
-            ProviderUpsertKind::Updated
-        } else {
-            ProviderUpsertKind::Merged
-        }
+        ProviderUpsertKind::Updated
     } else {
         if exact_id_match.is_some() {
             provider.id = unique_provider_id_on_connection(conn, &provider.id)?;
@@ -584,23 +516,7 @@ fn upsert_provider_in_savepoint(
         ProviderUpsertKind::Added
     };
 
-    if let (Some(source), Some(target)) = (source_match, import_rehome_target) {
-        if source.provider.id != target.provider.id {
-            conn.execute("DELETE FROM providers WHERE id = ?1", [&source.provider.id])
-                .map_err(|e| CodexxError::Database(e.to_string()))?;
-        }
-    }
-    let write_origin = match origin {
-        Some((CCSWITCH_PROVIDER_SOURCE, source_id)) if preserves_local_id => {
-            Some((CCSWITCH_LOCAL_PROVIDER_SOURCE, source_id))
-        }
-        _ => origin,
-    };
-    write_provider_with_origin(conn, &provider, write_origin)?;
-    for duplicate_id in conflicting_provider_ids(&stored, &provider, origin) {
-        conn.execute("DELETE FROM providers WHERE id = ?1", [&duplicate_id])
-            .map_err(|e| CodexxError::Database(e.to_string()))?;
-    }
+    write_provider_with_origin(conn, &provider, origin)?;
     let provider = provider_by_id_on_connection(conn, &provider.id)?
         .ok_or_else(|| CodexxError::Database("provider saved but not found".to_string()))?;
     Ok(ProviderUpsertResult { provider, kind })
@@ -671,164 +587,11 @@ fn is_historical_custom_provider_id(id: &str) -> bool {
 }
 
 pub(crate) fn consolidate_legacy_provider_duplicates_on_connection(
-    conn: &Connection,
+    _conn: &Connection,
 ) -> Result<usize> {
-    const SAVEPOINT: &str = "codex_x_provider_cleanup";
-    conn.execute_batch(&format!("SAVEPOINT {SAVEPOINT}"))
-        .map_err(|e| CodexxError::Database(e.to_string()))?;
-    let result = (|| -> Result<usize> {
-        let rows = stored_providers_on_connection(conn)?;
-        let mut groups: HashMap<ProviderIdentity, Vec<StoredProvider>> = HashMap::new();
-        for row in rows {
-            if let Some(identity @ ProviderIdentity::Credential(_)) =
-                provider_identity(&row.provider)
-            {
-                groups.entry(identity).or_default().push(row);
-            }
-        }
-        let duplicate_groups = groups
-            .into_values()
-            .filter(|group| group.len() > 1)
-            .collect::<Vec<_>>();
-        let mut merged = 0usize;
-        for mut group in duplicate_groups {
-            let preserves_local_profile = group.iter().any(|row| {
-                row.source == MANUAL_PROVIDER_SOURCE || row.source == CCSWITCH_LOCAL_PROVIDER_SOURCE
-            });
-            let mut origins = group
-                .iter()
-                .filter_map(|row| {
-                    row.source_id.as_ref().map(|source_id| {
-                        let source = if row.source == CCSWITCH_LOCAL_PROVIDER_SOURCE {
-                            CCSWITCH_PROVIDER_SOURCE.to_string()
-                        } else {
-                            row.source.clone()
-                        };
-                        (source, source_id.clone())
-                    })
-                })
-                .collect::<Vec<_>>();
-            origins.sort();
-            origins.dedup();
-            if origins.len() > 1 {
-                continue;
-            }
-            group.sort_by(|left, right| {
-                let left_is_local = left.source == MANUAL_PROVIDER_SOURCE
-                    || left.source == CCSWITCH_LOCAL_PROVIDER_SOURCE;
-                let right_is_local = right.source == MANUAL_PROVIDER_SOURCE
-                    || right.source == CCSWITCH_LOCAL_PROVIDER_SOURCE;
-                right_is_local
-                    .cmp(&left_is_local)
-                    .then_with(|| {
-                        is_historical_custom_provider_id(&left.provider.id)
-                            .cmp(&is_historical_custom_provider_id(&right.provider.id))
-                    })
-                    .then_with(|| right.updated_at.cmp(&left.updated_at))
-                    .then_with(|| right.created_at.cmp(&left.created_at))
-                    .then_with(|| left.provider.id.cmp(&right.provider.id))
-            });
-            let mut survivor = group[0].clone();
-            for duplicate in group.iter().skip(1) {
-                if survivor.provider.provider_name.trim().is_empty()
-                    && !duplicate.provider.provider_name.trim().is_empty()
-                {
-                    survivor.provider.provider_name = duplicate.provider.provider_name.clone();
-                }
-                if survivor.provider.model.trim().is_empty()
-                    && !duplicate.provider.model.trim().is_empty()
-                {
-                    survivor.provider.model = duplicate.provider.model.clone();
-                }
-                if survivor
-                    .provider
-                    .toml_config
-                    .as_deref()
-                    .is_none_or(|value| value.trim().is_empty())
-                    && duplicate
-                        .provider
-                        .toml_config
-                        .as_deref()
-                        .is_some_and(|value| !value.trim().is_empty())
-                {
-                    survivor.provider.toml_config = duplicate.provider.toml_config.clone();
-                }
-                if survivor.provider.api_key.is_none() && duplicate.provider.api_key.is_some() {
-                    survivor.provider.api_key = duplicate.provider.api_key.clone();
-                }
-            }
-            survivor.provider.base_url = canonical_provider_base_url(&survivor.provider.base_url);
-            survivor.provider.api_key = survivor
-                .provider
-                .api_key
-                .map(|value| value.trim().to_string())
-                .filter(|value| !value.is_empty());
-            for duplicate in group.iter().skip(1) {
-                conn.execute(
-                    "DELETE FROM providers WHERE id = ?1",
-                    [&duplicate.provider.id],
-                )
-                .map_err(|e| CodexxError::Database(e.to_string()))?;
-                merged += 1;
-            }
-            let origin = origins.first().map(|(source, source_id)| {
-                let source = if preserves_local_profile && source == CCSWITCH_PROVIDER_SOURCE {
-                    CCSWITCH_LOCAL_PROVIDER_SOURCE
-                } else {
-                    source.as_str()
-                };
-                (source, source_id.as_str())
-            });
-            write_provider_with_origin(conn, &survivor.provider, origin)?;
-        }
-
-        loop {
-            let rows = stored_providers_on_connection(conn)?;
-            let ghost_id = rows.iter().find_map(|ghost| {
-                if !is_historical_custom_provider_id(&ghost.provider.id) {
-                    return None;
-                }
-                if ghost.source != MANUAL_PROVIDER_SOURCE || ghost.source_id.is_some() {
-                    return None;
-                }
-                let mut candidates = rows.iter().filter(|candidate| {
-                    !is_historical_custom_provider_id(&candidate.provider.id)
-                        && same_provider_endpoint_and_name(&ghost.provider, &candidate.provider)
-                });
-                candidates.next()?;
-                candidates
-                    .next()
-                    .is_none()
-                    .then(|| ghost.provider.id.clone())
-            });
-            let Some(ghost_id) = ghost_id else {
-                break;
-            };
-            conn.execute("DELETE FROM providers WHERE id = ?1", [&ghost_id])
-                .map_err(|e| CodexxError::Database(e.to_string()))?;
-            merged += 1;
-        }
-        Ok(merged)
-    })();
-
-    match result {
-        Ok(merged) => {
-            conn.execute_batch(&format!("RELEASE SAVEPOINT {SAVEPOINT}"))
-                .map_err(|e| CodexxError::Database(e.to_string()))?;
-            Ok(merged)
-        }
-        Err(error) => {
-            let rollback = conn.execute_batch(&format!(
-                "ROLLBACK TO SAVEPOINT {SAVEPOINT}; RELEASE SAVEPOINT {SAVEPOINT}"
-            ));
-            match rollback {
-                Ok(()) => Err(error),
-                Err(rollback_error) => Err(CodexxError::Database(format!(
-                    "{error}; provider cleanup rollback failed: {rollback_error}"
-                ))),
-            }
-        }
-    }
+    // Distinct IDs are independent records, even when every configuration
+    // field matches. Keep the legacy hook for import-result compatibility.
+    Ok(0)
 }
 
 fn apply_provider_toml_authority(provider: &mut SavedProvider) -> Result<()> {
@@ -1003,18 +766,32 @@ pub(crate) fn normalize_saved_provider(provider: SavedProvider) -> Result<SavedP
     Ok(normalized)
 }
 
-pub(crate) fn save_manual_provider_on_connection(
+pub(crate) fn normalize_saved_provider_for_save(
     conn: &Connection,
     provider: SavedProvider,
 ) -> Result<SavedProvider> {
     let requested_id = provider.id.trim().to_string();
-    let provider = normalize_saved_provider(provider)?;
-    if requested_id != provider.id && provider_by_id_on_connection(conn, &provider.id)?.is_some() {
+    let mut normalized = normalize_saved_provider(provider)?;
+    if provider_by_id_on_connection(conn, &requested_id)?.is_some() {
+        // Existing IDs are record identities. Preserve legacy reserved IDs such
+        // as `custom` instead of treating an edit as a new normalized record.
+        normalized.id = requested_id;
+    } else if requested_id != normalized.id
+        && provider_by_id_on_connection(conn, &normalized.id)?.is_some()
+    {
         return Err(CodexxError::Config(format!(
             "供应商 ID {} 规范化后与现有供应商冲突，请更换名称或 ID",
             requested_id
         )));
     }
+    Ok(normalized)
+}
+
+pub(crate) fn save_manual_provider_on_connection(
+    conn: &Connection,
+    provider: SavedProvider,
+) -> Result<SavedProvider> {
+    let provider = normalize_saved_provider_for_save(conn, provider)?;
     Ok(upsert_provider_on_connection(conn, provider, ProviderUpsertMode::Manual)?.provider)
 }
 
@@ -1121,9 +898,17 @@ pub(crate) fn rollback_provider_store_inner(rollback: ProviderStoreRollback) -> 
 }
 
 pub(crate) fn delete_provider_inner(id: &str) -> Result<()> {
-    let conn = open_db()?;
-    conn.execute("DELETE FROM providers WHERE id = ?1", params![id])
+    let mut conn = open_db()?;
+    let transaction = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| CodexxError::Database(error.to_string()))?;
+    clear_provider_selections_on_connection(&transaction, id)?;
+    transaction
+        .execute("DELETE FROM providers WHERE id = ?1", params![id])
         .map_err(|e| CodexxError::Database(e.to_string()))?;
+    transaction
+        .commit()
+        .map_err(|error| CodexxError::Database(error.to_string()))?;
     Ok(())
 }
 
@@ -1204,7 +989,7 @@ mod tests {
     }
 
     #[test]
-    fn provider_upsert_deduplicates_safe_matches_and_keeps_distinct_credentials() {
+    fn provider_upsert_uses_record_ids_and_stable_import_sources() {
         let stable = test_connection();
         let mut existing = provider("cc-stable-id", "Old name", Some("sk-old"));
         existing.toml_config = Some("model = \"locally-preserved\"".to_string());
@@ -1263,16 +1048,16 @@ mod tests {
             ProviderUpsertMode::Manual,
         )
         .unwrap();
-        let merged = upsert_ccswitch_provider_on_connection(
+        let added = upsert_ccswitch_provider_on_connection(
             &compatible,
             provider("cc-import", " same   api ", Some("sk-imported")),
             "compatible-row",
         )
         .unwrap();
-        assert_eq!(merged.kind, ProviderUpsertKind::Merged);
-        assert_eq!(merged.provider.id, "local");
-        assert_eq!(merged.provider.api_key.as_deref(), Some("sk-imported"));
-        assert_eq!(provider_count(&compatible), 1);
+        assert_eq!(added.kind, ProviderUpsertKind::Added);
+        assert_eq!(added.provider.id, "cc-import");
+        assert_eq!(added.provider.api_key.as_deref(), Some("sk-imported"));
+        assert_eq!(provider_count(&compatible), 2);
 
         let distinct = test_connection();
         upsert_provider_on_connection(
@@ -1292,7 +1077,166 @@ mod tests {
     }
 
     #[test]
-    fn stable_import_collision_keeps_manual_id_and_applies_source_values() {
+    fn provider_upsert_keeps_manual_profiles_with_distinct_ids() {
+        let conn = test_connection();
+        let mut gpt = provider("gpt-profile", "Same API", Some("sk-shared"));
+        gpt.model = "gpt-5.6".to_string();
+        let added = upsert_provider_on_connection(&conn, gpt.clone(), ProviderUpsertMode::Manual)
+            .expect("save GPT profile");
+        assert_eq!(added.kind, ProviderUpsertKind::Added);
+
+        let exact_copy = SavedProvider {
+            id: "gpt-copy".to_string(),
+            ..gpt.clone()
+        };
+        let added = upsert_provider_on_connection(&conn, exact_copy, ProviderUpsertMode::Manual)
+            .expect("save an identical profile under a different ID");
+        assert_eq!(added.kind, ProviderUpsertKind::Added);
+        assert_eq!(added.provider.id, "gpt-copy");
+
+        let renamed_copy = SavedProvider {
+            id: "gpt-renamed".to_string(),
+            provider_name: "Renamed API".to_string(),
+            ..gpt.clone()
+        };
+        let added = upsert_provider_on_connection(&conn, renamed_copy, ProviderUpsertMode::Manual)
+            .expect("save a renamed profile under a different ID");
+        assert_eq!(added.kind, ProviderUpsertKind::Added);
+
+        let edited = SavedProvider {
+            provider_name: "Edited GPT".to_string(),
+            ..gpt
+        };
+        let updated = upsert_provider_on_connection(&conn, edited, ProviderUpsertMode::Manual)
+            .expect("update the profile with the same ID");
+        assert_eq!(updated.kind, ProviderUpsertKind::Updated);
+        assert_eq!(updated.provider.id, "gpt-profile");
+        assert_eq!(updated.provider.provider_name, "Edited GPT");
+
+        let mut deepseek = provider("deepseek-profile", "Renamed API", Some("sk-shared"));
+        deepseek.model = " deepseek-v3 ".to_string();
+        let added = upsert_provider_on_connection(&conn, deepseek, ProviderUpsertMode::Manual)
+            .expect("save DeepSeek profile with shared credentials");
+        assert_eq!(added.kind, ProviderUpsertKind::Added);
+        assert_eq!(provider_count(&conn), 4);
+    }
+
+    #[test]
+    fn provider_listing_preserves_insertion_order_when_timestamps_match() {
+        let conn = test_connection();
+        for id in ["z-original", "m-sibling", "a-copy"] {
+            write_provider_on_connection(&conn, &provider(id, id, Some("sk-shared")))
+                .expect("insert provider");
+        }
+        conn.execute(
+            "UPDATE providers
+             SET created_at = '2026-01-01T00:00:00Z',
+                 updated_at = CASE id
+                     WHEN 'z-original' THEN '2026-03-01T00:00:00Z'
+                     WHEN 'm-sibling' THEN '2026-02-01T00:00:00Z'
+                     ELSE '2026-01-01T00:00:00Z'
+                 END",
+            [],
+        )
+        .expect("align creation timestamps");
+
+        let listed_ids = list_saved_providers_on_connection(&conn)
+            .expect("list providers")
+            .into_iter()
+            .map(|provider| provider.id)
+            .collect::<Vec<_>>();
+        assert_eq!(listed_ids, ["z-original", "m-sibling", "a-copy"]);
+
+        let mut edited = provider("z-original", "Edited original", Some("sk-shared"));
+        edited.model = "gpt-5.6".to_string();
+        upsert_provider_on_connection(&conn, edited, ProviderUpsertMode::Manual)
+            .expect("update first provider");
+        let listed_ids = list_saved_providers_on_connection(&conn)
+            .expect("list providers after edit")
+            .into_iter()
+            .map(|provider| provider.id)
+            .collect::<Vec<_>>();
+        assert_eq!(listed_ids, ["z-original", "m-sibling", "a-copy"]);
+    }
+
+    #[test]
+    fn manual_save_preserves_an_existing_legacy_reserved_id() {
+        let conn = test_connection();
+        let legacy = provider("custom", "Legacy Provider", Some("sk-legacy"));
+        write_provider_on_connection(&conn, &legacy).expect("seed legacy custom record");
+
+        let edited = SavedProvider {
+            provider_name: "Edited Legacy Provider".to_string(),
+            ..legacy
+        };
+        let saved = save_manual_provider_on_connection(&conn, edited)
+            .expect("edit the existing legacy custom record");
+
+        assert_eq!(saved.id, "custom");
+        assert_eq!(saved.provider_name, "Edited Legacy Provider");
+        assert_eq!(provider_count(&conn), 1);
+        assert!(provider_by_id_on_connection(&conn, "custom-custom")
+            .expect("look up normalized duplicate")
+            .is_none());
+    }
+
+    #[test]
+    fn ccswitch_import_keeps_ambiguous_manual_profiles_and_updates_by_source_id() {
+        let conn = test_connection();
+        let first = provider("manual-one", "Same API", Some("sk-shared"));
+        let second = SavedProvider {
+            id: "manual-two".to_string(),
+            ..first.clone()
+        };
+        upsert_provider_on_connection(&conn, first, ProviderUpsertMode::Manual)
+            .expect("save first manual profile");
+        upsert_provider_on_connection(&conn, second, ProviderUpsertMode::Manual)
+            .expect("save second manual profile");
+
+        let imported = provider("cc-profile", "Same API", Some("sk-shared"));
+        let added = upsert_ccswitch_provider_on_connection(&conn, imported.clone(), "cc-source-id")
+            .expect("import alongside ambiguous manual profiles");
+        assert_eq!(added.kind, ProviderUpsertKind::Added);
+        assert_eq!(added.provider.id, "cc-profile");
+        assert_eq!(provider_count(&conn), 3);
+
+        let repeated = SavedProvider {
+            provider_name: "Updated from CC Switch".to_string(),
+            ..imported
+        };
+        let updated = upsert_ccswitch_provider_on_connection(&conn, repeated, "cc-source-id")
+            .expect("update the same imported source row");
+        assert_eq!(updated.kind, ProviderUpsertKind::Updated);
+        assert_eq!(updated.provider.id, "cc-profile");
+        assert_eq!(updated.provider.provider_name, "Updated from CC Switch");
+        assert_eq!(provider_count(&conn), 3);
+    }
+
+    #[test]
+    fn ccswitch_import_keeps_a_manual_copy_of_its_current_profile() {
+        let conn = test_connection();
+        let imported = provider("cc-profile", "Same API", Some("sk-shared"));
+        upsert_ccswitch_provider_on_connection(&conn, imported.clone(), "cc-source-id")
+            .expect("seed imported profile");
+        let manual_copy = SavedProvider {
+            id: "manual-copy".to_string(),
+            ..imported.clone()
+        };
+        upsert_provider_on_connection(&conn, manual_copy, ProviderUpsertMode::Manual)
+            .expect("save manual copy");
+
+        let updated = upsert_ccswitch_provider_on_connection(&conn, imported, "cc-source-id")
+            .expect("refresh imported profile by source ID");
+        assert_eq!(updated.kind, ProviderUpsertKind::Updated);
+        assert_eq!(updated.provider.id, "cc-profile");
+        assert_eq!(provider_count(&conn), 2);
+        assert!(provider_by_id_on_connection(&conn, "manual-copy")
+            .expect("read manual copy")
+            .is_some());
+    }
+
+    #[test]
+    fn stable_import_updates_its_source_without_claiming_a_manual_id() {
         let conn = test_connection();
         let mut imported = provider("cc-old", "Imported old", Some("sk-old"));
         imported.base_url = "https://old.example.com/v1".to_string();
@@ -1301,8 +1245,8 @@ mod tests {
 
         let mut manual = provider("manual-local", "Locally edited", Some("sk-shared"));
         manual.base_url = "https://shared.example.com/v1".to_string();
-        manual.model = "local-model".to_string();
-        manual.toml_config = Some("model = \"local-model\"".to_string());
+        manual.model = "remote-model".to_string();
+        manual.toml_config = Some("model = \"remote-model\"".to_string());
         upsert_provider_on_connection(&conn, manual, ProviderUpsertMode::Manual)
             .expect("seed manual provider");
 
@@ -1310,20 +1254,26 @@ mod tests {
         changed.base_url = "https://shared.example.com/v1".to_string();
         changed.model = "remote-model".to_string();
         let result = upsert_ccswitch_provider_on_connection(&conn, changed, "cc-row")
-            .expect("merge source update into manual record");
+            .expect("update the imported source record");
 
-        assert_eq!(result.kind, ProviderUpsertKind::Merged);
-        assert_eq!(result.provider.id, "manual-local");
+        assert_eq!(result.kind, ProviderUpsertKind::Updated);
+        assert_eq!(result.provider.id, "cc-old");
         assert_eq!(result.provider.provider_name, "Imported changed");
         assert_eq!(result.provider.model, "remote-model");
-        assert_eq!(
-            result.provider.toml_config.as_deref(),
-            Some("model = \"local-model\"")
-        );
-        let rows = stored_providers_on_connection(&conn).expect("read merged providers");
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].source, CCSWITCH_LOCAL_PROVIDER_SOURCE);
-        assert_eq!(rows[0].source_id.as_deref(), Some("cc-row"));
+        let rows = stored_providers_on_connection(&conn).expect("read independent providers");
+        assert_eq!(rows.len(), 2);
+        let manual = rows
+            .iter()
+            .find(|row| row.provider.id == "manual-local")
+            .expect("manual provider remains");
+        assert_eq!(manual.provider.provider_name, "Locally edited");
+        assert_eq!(manual.source, MANUAL_PROVIDER_SOURCE);
+        let imported = rows
+            .iter()
+            .find(|row| row.provider.id == "cc-old")
+            .expect("imported provider remains");
+        assert_eq!(imported.source, CCSWITCH_PROVIDER_SOURCE);
+        assert_eq!(imported.source_id.as_deref(), Some("cc-row"));
     }
 
     #[test]
@@ -1417,7 +1367,7 @@ enabled = true
         );
         let rows = stored_providers_on_connection(&conn).expect("read imported row");
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].source, CCSWITCH_LOCAL_PROVIDER_SOURCE);
+        assert_eq!(rows[0].source, CCSWITCH_PROVIDER_SOURCE);
         assert_eq!(rows[0].source_id.as_deref(), Some("cc-row"));
     }
 
@@ -1463,7 +1413,7 @@ enabled = true
     }
 
     #[test]
-    fn historical_custom_ghost_cleanup_requires_one_stable_endpoint_match() {
+    fn legacy_cleanup_preserves_historical_custom_ids() {
         let conn = test_connection();
         write_provider_on_connection(&conn, &provider("local", "Same API", Some("sk-current")))
             .unwrap();
@@ -1475,12 +1425,12 @@ enabled = true
 
         assert_eq!(
             consolidate_legacy_provider_duplicates_on_connection(&conn).unwrap(),
-            1
+            0
         );
         let rows = list_saved_providers_on_connection(&conn).unwrap();
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].id, "local");
-        assert_eq!(rows[0].api_key.as_deref(), Some("sk-current"));
+        assert_eq!(rows.len(), 2);
+        assert!(rows.iter().any(|row| row.id == "local"));
+        assert!(rows.iter().any(|row| row.id == "custom"));
 
         let ambiguous = test_connection();
         write_provider_on_connection(
@@ -1504,13 +1454,44 @@ enabled = true
             0
         );
         assert_eq!(provider_count(&ambiguous), 3);
+
+        let different_models = test_connection();
+        let mut stable = provider("local", "Same API", Some("sk-current"));
+        stable.model = "deepseek-v3".to_string();
+        write_provider_on_connection(&different_models, &stable).unwrap();
+        let mut ghost = provider("custom", " same   api ", Some("sk-old-live"));
+        ghost.model = "gpt-5.6".to_string();
+        write_provider_on_connection(&different_models, &ghost).unwrap();
+
+        assert_eq!(
+            consolidate_legacy_provider_duplicates_on_connection(&different_models).unwrap(),
+            0
+        );
+        assert_eq!(provider_count(&different_models), 2);
     }
 
     #[test]
-    fn legacy_consolidation_keeps_local_id_but_next_import_is_authoritative() {
+    fn legacy_consolidation_keeps_distinct_models_for_shared_credentials() {
+        let conn = test_connection();
+        let mut gpt = provider("gpt-profile", "Same API", Some("sk-shared"));
+        gpt.model = "gpt-5.6".to_string();
+        write_provider_on_connection(&conn, &gpt).unwrap();
+        let mut deepseek = provider("deepseek-profile", "Same API", Some("sk-shared"));
+        deepseek.model = "deepseek-v3".to_string();
+        write_provider_on_connection(&conn, &deepseek).unwrap();
+
+        assert_eq!(
+            consolidate_legacy_provider_duplicates_on_connection(&conn).unwrap(),
+            0
+        );
+        assert_eq!(provider_count(&conn), 2);
+    }
+
+    #[test]
+    fn legacy_consolidation_preserves_manual_and_imported_ids() {
         let conn = test_connection();
         let mut imported = provider("imported-old", "Imported old", Some("sk-same"));
-        imported.model = "old-model".to_string();
+        imported.model = "latest-model".to_string();
         write_provider_with_origin(&conn, &imported, Some((CCSWITCH_PROVIDER_SOURCE, "cc-row")))
             .unwrap();
         let mut manual = provider("manual-local", "Edited locally", Some("sk-same"));
@@ -1527,19 +1508,12 @@ enabled = true
 
         assert_eq!(
             consolidate_legacy_provider_duplicates_on_connection(&conn).unwrap(),
-            1
+            0
         );
         let rows = stored_providers_on_connection(&conn).unwrap();
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].provider.id, "manual-local");
-        assert_eq!(rows[0].provider.provider_name, "Edited locally");
-        assert_eq!(rows[0].provider.model, "latest-model");
-        assert_eq!(
-            rows[0].provider.toml_config.as_deref(),
-            Some("model = \"latest-model\"")
-        );
-        assert_eq!(rows[0].source, CCSWITCH_LOCAL_PROVIDER_SOURCE);
-        assert_eq!(rows[0].source_id.as_deref(), Some("cc-row"));
+        assert_eq!(rows.len(), 2);
+        assert!(rows.iter().any(|row| row.provider.id == "manual-local"));
+        assert!(rows.iter().any(|row| row.provider.id == "imported-old"));
 
         let mut repeated = provider("imported-old", "Remote replacement", Some("sk-same"));
         repeated.model = "remote-model".to_string();
@@ -1548,16 +1522,24 @@ enabled = true
             .expect("repeat import after legacy consolidation");
 
         let rows = stored_providers_on_connection(&conn).unwrap();
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].provider.id, "manual-local");
-        assert_eq!(rows[0].provider.provider_name, "Remote replacement");
-        assert_eq!(rows[0].provider.model, "remote-model");
+        assert_eq!(rows.len(), 2);
+        let manual = rows
+            .iter()
+            .find(|row| row.provider.id == "manual-local")
+            .expect("manual provider remains");
+        assert_eq!(manual.provider.provider_name, "Edited locally");
         assert_eq!(
-            rows[0].provider.toml_config.as_deref(),
-            Some("model = \"remote-model\"")
+            manual.provider.toml_config.as_deref(),
+            Some("model = \"latest-model\"")
         );
-        assert_eq!(rows[0].source, CCSWITCH_LOCAL_PROVIDER_SOURCE);
-        assert_eq!(rows[0].source_id.as_deref(), Some("cc-row"));
+        let imported = rows
+            .iter()
+            .find(|row| row.provider.id == "imported-old")
+            .expect("imported provider remains");
+        assert_eq!(imported.provider.provider_name, "Remote replacement");
+        assert_eq!(imported.provider.model, "remote-model");
+        assert_eq!(imported.source, CCSWITCH_PROVIDER_SOURCE);
+        assert_eq!(imported.source_id.as_deref(), Some("cc-row"));
     }
 
     #[test]
@@ -1584,19 +1566,34 @@ enabled = true
     }
 
     #[test]
-    fn live_custom_matches_only_one_stable_provider_without_trusting_a_stale_key() {
+    fn live_custom_matches_a_preserved_historical_record_by_its_profile() {
         let stable = provider("stable", "Same API", Some("sk-current"));
-        let persisted_ghost = provider("custom", "Same API", Some("sk-old-live"));
+        let historical = provider("custom", "Same API", Some("sk-old-live"));
         let live = provider("custom", " same   api ", Some("sk-old-live"));
         assert_eq!(
-            unique_saved_provider_id_for_live(&live, &[stable.clone(), persisted_ghost]),
-            Some("stable".to_string())
+            unique_saved_provider_id_for_live(&live, &[stable.clone(), historical]),
+            Some("custom".to_string())
         );
 
         let second = provider("second", "Same API", Some("sk-second"));
         assert_eq!(
             unique_saved_provider_id_for_live(&live, &[stable, second]),
             None
+        );
+    }
+
+    #[test]
+    fn live_custom_matches_the_saved_profile_with_the_same_model() {
+        let mut gpt = provider("gpt-profile", "Same API", Some("sk-shared"));
+        gpt.model = "gpt-5.6".to_string();
+        let mut deepseek = provider("deepseek-profile", "Same API", Some("sk-shared"));
+        deepseek.model = "deepseek-v3".to_string();
+        let mut live = provider("custom", "Same API", Some("sk-shared"));
+        live.model = " deepseek-v3 ".to_string();
+
+        assert_eq!(
+            unique_saved_provider_id_for_live(&live, &[gpt, deepseek]),
+            Some("deepseek-profile".to_string())
         );
     }
 

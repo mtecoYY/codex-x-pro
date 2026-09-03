@@ -221,9 +221,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Test Windows filesystem compatibility
+      - name: Run desktop gateway contract and component tests
+        run: pnpm --dir apps/desktop test:gateway
+
+      - name: Test isolated Windows gateway scheduled-task XML
         if: matrix.platform == 'windows-latest'
-        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib --locked
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib gateway::tests::windows_schtasks_accepts_generated_watchdog_xml --locked -- --ignored --exact
 
       - name: Import Apple signing certificate and notarization key
         if: matrix.macos

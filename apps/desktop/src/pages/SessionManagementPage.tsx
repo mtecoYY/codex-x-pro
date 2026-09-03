@@ -22,6 +22,8 @@ export type SessionPreview = {
   model?: string | null;
   cwd?: string | null;
   rolloutPath?: string | null;
+  rolloutSizeBytes?: number | null;
+  loadBlocked: boolean;
   updatedAtMs?: number | null;
   archived: boolean;
   hasUserEvent: boolean;
@@ -97,6 +99,18 @@ function formatSessionTime(value?: number | null, lang: Lang = "zh") {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function formatSessionSize(value?: number | null, lang: Lang = "zh") {
+  if (!value || !Number.isFinite(value)) return lang === "zh" ? "\u672a\u77e5\u5927\u5c0f" : "Unknown size";
+  const units = ["B", "KiB", "MiB", "GiB"];
+  let size = value;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  return `${size >= 100 || unit === 0 ? size.toFixed(0) : size.toFixed(2)} ${units[unit]}`;
 }
 
 function compactPath(value: string | null | undefined, max = 58, missing = "未记录路径") {
@@ -447,7 +461,7 @@ export function SessionManagementPage({
                         </label>
                       )}
                       {items.map((item) => (
-                        <label className={cx("cx-session-row", item.needsSync && "cx-session-row--needs-sync", selectedSessionSet.has(item.id) && "cx-session-row--selected")} key={item.id}>
+                        <label className={cx("cx-session-row", item.needsSync && "cx-session-row--needs-sync", item.loadBlocked && "cx-session-row--needs-sync", selectedSessionSet.has(item.id) && "cx-session-row--selected")} key={item.id}>
                           <span className="cx-session-select-box" title={copy.selectSession}>
                             <input
                               className="cx-session-checkbox"
@@ -463,6 +477,7 @@ export function SessionManagementPage({
                               {item.archived && <span className="cx-session-state">{copy.archived}</span>}
                               {item.isSubagent && <span className="cx-session-state">{copy.internal}</span>}
                               {item.needsSync && <span className="cx-session-state cx-session-state--warn">{copy.pending}</span>}
+                              {item.loadBlocked && <span className="cx-session-state cx-session-state--warn" title={item.rolloutPath || undefined}>{isChinese ? `\u5185\u5bb9\u8fc7\u5927\uff0c\u6682\u4e0d\u52a0\u8f7d (${formatSessionSize(item.rolloutSizeBytes, lang)})` : `Too large to load (${formatSessionSize(item.rolloutSizeBytes, lang)})`}</span>}
                             </div>
                             {!sessionGroupByCwd && <p title={item.cwd || item.rolloutPath || undefined}>{compactPath(item.cwd || item.rolloutPath, 72, isChinese ? "未记录路径" : "No path recorded")}</p>}
                           </div>

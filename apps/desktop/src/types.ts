@@ -5,6 +5,58 @@ export type ProviderMode = "list" | "form" | "official";
 export type InstructionMode = "list" | "form";
 export type PromptInjectionMode = "append" | "replace";
 
+export type GatewayProcessState = {
+  running: boolean;
+  managedByCodexX: boolean;
+  codexRouteActive: boolean;
+  listenPort: number;
+  processId?: number | null;
+  state?: Record<string, unknown> | null;
+  error?: string | null;
+    watchdogRunning?: boolean;
+    watchdogAutostart?: boolean;
+    watchdogDesired?: boolean;
+  watchdogRuntime?: "starting" | "running" | "stopped";
+  degraded?: boolean;
+};
+
+export type GatewayObserveState = {
+  capture_enabled: boolean;
+  capture_limit: number;
+  retained_count: number;
+  evicted_count: number;
+  capture_dropped_count: number;
+  next_seq: number;
+};
+
+export type GatewayObserveRow = {
+  id: number;
+    channel?: string | null;
+    channel_source?: "provider_host" | string;
+  status_code?: number | null;
+  model?: string | null;
+  request_time_ms?: number | null;
+    first_token_ms?: number | null;
+    tokens?: number | null;
+    tokens_status?: "available" | "unavailable";
+    tokens_error?: string | null;
+  created_at?: number | null;
+  ok?: boolean;
+  error?: string | null;
+};
+
+export type GatewayScriptSummary = {
+  id: string;
+  name: string;
+  description?: string;
+  status: "not_tested" | "testing" | "passed" | "failed";
+  enabled: boolean;
+  priority: number;
+  average_ms?: number | null;
+  test_detail_available?: boolean;
+  error?: string | null;
+};
+
 export type InstructionTemplate = {
   id: string;
   filename: string;
@@ -137,6 +189,11 @@ export type AboutInfo = {
   nativeUpdaterSupported: boolean;
 };
 
+export type CodexDesktopRestartResult = {
+  appName: string;
+  wasRunning: boolean;
+};
+
 export type ReleaseInfo = {
   status: "idle" | "checking" | "ok" | "error";
   latestVersion?: string;
@@ -191,6 +248,7 @@ export type ManagedSkill = {
   id: string;
   name: string;
   description?: string | null;
+  note?: string | null;
   directory: string;
   enabled: boolean;
   source: string;
@@ -206,6 +264,7 @@ export type ManagedMcpServer = {
   enabled: boolean;
   source: string;
   summary: string;
+  note?: string | null;
   command?: string | null;
   url?: string | null;
   configJson: unknown;

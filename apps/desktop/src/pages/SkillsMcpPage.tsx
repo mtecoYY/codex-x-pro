@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, useState } from "react";
 import type { ChangeEvent, RefObject } from "react";
 import {
   AlertCircle,
@@ -7,6 +7,7 @@ import {
   FolderInput,
   Loader2,
   PackageOpen,
+  PencilLine,
   PlugZap,
   RefreshCw,
   Sparkles,
@@ -14,11 +15,12 @@ import {
 } from "lucide-react";
 
 import { PageTransition } from "../components/PageTransition";
-import { Button, ModalShell, StatusBadge, Toggle, cx } from "../components/ui";
+import { Button, IconButton, ModalShell, StatusBadge, Toggle, cx } from "../components/ui";
 import type { Lang, ManagedMcpServer, ManagedSkill, SkillsMcpImportPreview, SkillsMcpState } from "../types";
 import "../styles/skills-prompts-pages.css";
 
 export type SkillsMcpTab = "mcp" | "skills";
+export type SkillsMcpNoteKind = "mcp" | "skill";
 
 type MaybeAsyncAction = () => void | Promise<void>;
 
@@ -27,6 +29,7 @@ export type SkillsMcpPageProps = {
   state: SkillsMcpState | null;
   activeTab: SkillsMcpTab;
   actionBusy: string;
+  noteBusyKey: string;
   importOpen: boolean;
   importPreview: SkillsMcpImportPreview | null;
   zipInputRef: RefObject<HTMLInputElement>;
@@ -40,6 +43,14 @@ export type SkillsMcpPageProps = {
   onCheckUpdates: MaybeAsyncAction;
   onToggleSkill: (id: string, enabled: boolean) => void | Promise<void>;
   onToggleMcp: (id: string, enabled: boolean) => void | Promise<void>;
+  onSaveNote: (itemKind: SkillsMcpNoteKind, id: string, note: string) => Promise<boolean>;
+};
+
+type NoteTarget = {
+  itemKind: SkillsMcpNoteKind;
+  id: string;
+  name: string;
+  note: string;
 };
 
 type SkillsMcpCopy = ReturnType<typeof getCopy>;
@@ -65,6 +76,16 @@ function getCopy(lang: Lang) {
         enableSkill: "启用 Skill",
         disableSkill: "禁用 Skill",
         updateStatus: "更新状态",
+        addNote: "添加备注",
+        editNote: "编辑备注",
+        noteTitle: "自定义备注",
+        noteDescription: (name: string) => `为“${name}”添加便于识别的说明。`,
+        noteLabel: "备注内容",
+        notePlaceholder: "例如：用于查询项目文档，依赖本地 Node.js",
+        noteEmptyHint: "留空保存将清除现有备注",
+        noteCount: (count: number) => `${count} / 1000`,
+        saveNote: "保存备注",
+        savingNote: "保存中",
         importTitle: "确认导入已有内容",
         importDescription: "以下内容来自本机现有配置。导入后可在此统一启用或禁用。",
         noImportItems: "没有发现可导入的已有 Skills / MCP。",
@@ -94,6 +115,16 @@ function getCopy(lang: Lang) {
         enableSkill: "Enable Skill",
         disableSkill: "Disable Skill",
         updateStatus: "Update status",
+        addNote: "Add note",
+        editNote: "Edit note",
+        noteTitle: "Custom note",
+        noteDescription: (name: string) => `Add a description that helps you recognize “${name}”.`,
+        noteLabel: "Note",
+        notePlaceholder: "For example: searches project docs; requires local Node.js",
+        noteEmptyHint: "Save an empty note to remove it",
+        noteCount: (count: number) => `${count} / 1000`,
+        saveNote: "Save note",
+        savingNote: "Saving",
         importTitle: "Confirm import",
         importDescription: "These items were found in the existing local configuration. Import them to manage their state here.",
         noImportItems: "No existing Skills / MCP items were found.",
@@ -116,22 +147,33 @@ function McpRow({
   disabled,
   copy,
   onToggle,
+  onEditNote,
 }: {
   server: ManagedMcpServer;
   busy: boolean;
   disabled: boolean;
   copy: SkillsMcpCopy;
   onToggle: SkillsMcpPageProps["onToggleMcp"];
+  onEditNote: (target: NoteTarget) => void;
 }) {
   const name = server.name || server.id;
-  const details = [server.summary, server.transport, server.source].filter(Boolean).join("\n");
+  const details = [server.note, server.summary, server.transport, server.source].filter(Boolean).join("\n");
   return (
     <article className="cx-skills-row">
-      <div className="cx-skills-row-copy">
+      <div className={cx("cx-skills-row-copy", Boolean(server.note) && "cx-skills-row-copy--noted")}>
         <strong title={details ? `${name}\n${details}` : name}>{name}</strong>
+        {server.note && <span className="cx-skills-row-note" title={server.note}>{server.note}</span>}
       </div>
       <div className="cx-skills-row-control">
         {busy && <Loader2 size={15} className="cx-skills-spin" aria-hidden="true" />}
+        <IconButton
+          icon={<PencilLine size={15} strokeWidth={1.9} />}
+          label={server.note ? copy.editNote : copy.addNote}
+          size="sm"
+          className="cx-skills-note-button"
+          onClick={() => onEditNote({ itemKind: "mcp", id: server.id, name, note: server.note || "" })}
+          disabled={disabled}
+        />
         <Toggle
           checked={server.enabled}
           onCheckedChange={(enabled) => void onToggle(server.id, enabled)}
@@ -149,12 +191,14 @@ function SkillRow({
   disabled,
   copy,
   onToggle,
+  onEditNote,
 }: {
   skill: ManagedSkill;
   busy: boolean;
   disabled: boolean;
   copy: SkillsMcpCopy;
   onToggle: SkillsMcpPageProps["onToggleSkill"];
+  onEditNote: (target: NoteTarget) => void;
 }) {
   const name = skill.name || skill.directory;
   const updateTone = skill.updateStatus.includes("失败") || skill.updateStatus.toLowerCase().includes("fail")
@@ -164,20 +208,29 @@ function SkillRow({
       : "neutral";
 
   const showUpdateStatus = Boolean(skill.updateStatus && skill.updateStatus !== "未检查");
-  const details = [skill.description, skill.source].filter(Boolean).join("\n");
+  const details = [skill.note, skill.description, skill.source].filter(Boolean).join("\n");
 
   return (
     <article className="cx-skills-row">
-      <div className="cx-skills-row-copy">
+      <div className={cx("cx-skills-row-copy", Boolean(skill.note) && "cx-skills-row-copy--noted")}>
         <strong title={details ? `${name}\n${details}` : name}>{name}</strong>
+        {skill.note && <span className="cx-skills-row-note" title={skill.note}>{skill.note}</span>}
         {showUpdateStatus && (
-          <StatusBadge tone={updateTone} dot={false} title={copy.updateStatus}>
+          <StatusBadge tone={updateTone} dot={false} title={`${copy.updateStatus}: ${skill.updateStatus}`}>
             {skill.updateStatus}
           </StatusBadge>
         )}
       </div>
       <div className="cx-skills-row-control">
         {busy && <Loader2 size={15} className="cx-skills-spin" aria-hidden="true" />}
+        <IconButton
+          icon={<PencilLine size={15} strokeWidth={1.9} />}
+          label={skill.note ? copy.editNote : copy.addNote}
+          size="sm"
+          className="cx-skills-note-button"
+          onClick={() => onEditNote({ itemKind: "skill", id: skill.id, name, note: skill.note || "" })}
+          disabled={disabled}
+        />
         <Toggle
           checked={skill.enabled}
           onCheckedChange={(enabled) => void onToggle(skill.id, enabled)}
@@ -255,6 +308,7 @@ export function SkillsMcpPage({
   state,
   activeTab,
   actionBusy,
+  noteBusyKey,
   importOpen,
   importPreview,
   zipInputRef,
@@ -268,12 +322,34 @@ export function SkillsMcpPage({
   onCheckUpdates,
   onToggleSkill,
   onToggleMcp,
+  onSaveNote,
 }: SkillsMcpPageProps) {
   const copy = getCopy(lang);
   const tabId = useId();
   const anyBusy = Boolean(actionBusy);
   const importBusy = actionBusy === "importExistingSkillsMcp";
   const activeItems = activeTab === "mcp" ? state?.mcpServers ?? [] : state?.skills ?? [];
+  const [noteTarget, setNoteTarget] = useState<NoteTarget | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
+  const noteBusy = noteTarget
+    ? noteBusyKey === `note:${noteTarget.itemKind}:${noteTarget.id}`
+    : false;
+  const openNoteEditor = (target: NoteTarget) => {
+    setNoteTarget(target);
+    setNoteDraft(target.note);
+  };
+  const closeNoteEditor = () => {
+    if (!noteBusy) setNoteTarget(null);
+  };
+  const updateNoteDraft = (value: string) => {
+    setNoteDraft(Array.from(value).slice(0, 1000).join(""));
+  };
+  const saveNote = async () => {
+    if (!noteTarget || noteBusy) return;
+    if (await onSaveNote(noteTarget.itemKind, noteTarget.id, noteDraft)) {
+      setNoteTarget(null);
+    }
+  };
   const handleZipChange = (event: ChangeEvent<HTMLInputElement>) => {
     void onInstallZip(event.currentTarget.files?.[0]);
   };
@@ -395,6 +471,7 @@ export function SkillsMcpPage({
                       disabled={anyBusy}
                       copy={copy}
                       onToggle={onToggleMcp}
+                      onEditNote={openNoteEditor}
                     />
                   ))
                 ) : state.skills.length === 0 ? (
@@ -407,6 +484,7 @@ export function SkillsMcpPage({
                     disabled={anyBusy}
                     copy={copy}
                     onToggle={onToggleSkill}
+                    onEditNote={openNoteEditor}
                   />
                 ))}
               </div>
@@ -452,6 +530,48 @@ export function SkillsMcpPage({
         )}
       >
         <ImportPreviewContent preview={importPreview} copy={copy} />
+      </ModalShell>
+
+      <ModalShell
+        open={Boolean(noteTarget)}
+        onClose={closeNoteEditor}
+        title={copy.noteTitle}
+        description={noteTarget ? copy.noteDescription(noteTarget.name) : undefined}
+        size="sm"
+        closeOnBackdrop={!noteBusy}
+        closeOnEscape={!noteBusy}
+        showCloseButton={!noteBusy}
+        className="cx-skills-note-modal"
+        footer={(
+          <>
+            <Button variant="secondary" onClick={closeNoteEditor} disabled={noteBusy}>
+              {copy.cancel}
+            </Button>
+            <Button
+              icon={noteBusy ? <Loader2 className="cx-skills-spin" /> : <PencilLine />}
+              onClick={() => void saveNote()}
+              disabled={noteBusy}
+            >
+              {noteBusy ? copy.savingNote : copy.saveNote}
+            </Button>
+          </>
+        )}
+      >
+        <label className="cx-skills-note-field">
+          <span>{copy.noteLabel}</span>
+          <textarea
+            value={noteDraft}
+            onChange={(event) => updateNoteDraft(event.target.value)}
+            placeholder={copy.notePlaceholder}
+            rows={5}
+            disabled={noteBusy}
+            data-initial-focus
+          />
+        </label>
+        <div className="cx-skills-note-meta">
+          <span>{copy.noteEmptyHint}</span>
+          <span>{copy.noteCount(Array.from(noteDraft).length)}</span>
+        </div>
       </ModalShell>
     </section>
   );

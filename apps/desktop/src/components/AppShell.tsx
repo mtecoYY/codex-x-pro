@@ -10,6 +10,7 @@ import {
   LoaderCircle,
   Moon,
   RotateCcw,
+  Radio,
   Settings,
   Sparkles,
   Sun,
@@ -25,6 +26,9 @@ export type AppTheme = "light" | "dark";
 
 export type AppTab =
   | "dashboard"
+  | "gateway"
+  | "gatewayObserve"
+  | "gatewayScripts"
   | "provider"
   | "sessions"
   | "skillsMcp"
@@ -46,6 +50,9 @@ const NAV_ITEMS: readonly NavItem[] = [
   { id: "skillsMcp", icon: Blocks, label: { zh: "技能和MCP", en: "Skills & MCP" } },
   { id: "instruction", icon: Sparkles, label: { zh: "指令提示词", en: "Prompts" } },
   { id: "toml", icon: FileCode2, label: { zh: "TOML", en: "TOML" } },
+  { id: "gateway", icon: Radio, label: { zh: "本地网关", en: "Gateway" } },
+  { id: "gatewayObserve", icon: TerminalSquare, label: { zh: "实时请求观测", en: "Request observation" } },
+  { id: "gatewayScripts", icon: FileCode2, label: { zh: "用户脚本处理器", en: "Script processors" } },
   { id: "settings", icon: Settings, label: { zh: "设置", en: "Settings" } },
   { id: "about", icon: Info, label: { zh: "关于", en: "About" } },
 ] as const;

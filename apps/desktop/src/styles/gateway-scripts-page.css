@@ -1,0 +1,129 @@
+.cx-gateway-script-notice {
+  padding: 12px 14px;
+  color: var(--ui-warning);
+  background: color-mix(in srgb, var(--ui-warning) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-warning) 35%, transparent);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.cx-gateway-script-notice--active {
+  color: var(--ui-success);
+  background: color-mix(in srgb, var(--ui-success) 10%, transparent);
+  border-color: color-mix(in srgb, var(--ui-success) 35%, transparent);
+}
+
+.cx-gateway-scripts-panel {
+  overflow: hidden;
+}
+
+.cx-gateway-script-toolbar {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.cx-gateway-scripts {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+}
+
+.cx-gateway-script {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+  padding: 14px 16px;
+  color: var(--cx-page-text);
+  background: var(--cx-page-surface);
+  border: 1px solid var(--cx-page-border);
+  border-radius: 8px;
+}
+
+.cx-gateway-script-main {
+  min-width: 0;
+}
+
+.cx-gateway-script-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cx-gateway-script-title strong {
+  color: var(--cx-page-text);
+  font-size: 14px;
+  font-weight: 680;
+}
+
+.cx-gateway-script-main p {
+  margin: 6px 0;
+  color: var(--cx-page-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.cx-gateway-script-main small {
+  color: var(--cx-page-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.cx-gateway-script-actions {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.cx-gateway-test-input {
+  width: 100%;
+  min-height: 320px;
+  resize: vertical;
+  padding: 12px;
+  font: 12px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace;
+  white-space: pre;
+}
+
+.cx-gateway-test-source {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px 20px 0;
+}
+
+.cx-gateway-test-source-label {
+  padding: 8px 20px 0;
+  color: var(--cx-page-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.cx-gateway-test-default {
+  min-height: 320px;
+  margin: 8px 20px 18px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
+}
+
+@media (max-width: 760px) {
+  .cx-gateway-scripts-head,
+  .cx-gateway-script {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .cx-gateway-script-toolbar,
+  .cx-gateway-script-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { ReactNode } from "react";
 import {
   CheckCircle2,
@@ -5,10 +6,12 @@ import {
   ExternalLink,
   Globe2,
   Loader2,
+  Power,
   RefreshCw,
   Sparkles,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { Button, ModalShell } from "../components/ui";
 import "../styles/utility-pages.css";
 
 export type UtilityLanguage = "zh" | "en";
@@ -84,6 +87,15 @@ export type SettingsCopy = {
   recheckTitle: ReactNode;
   recheckDescription: ReactNode;
   recheckLabel: ReactNode;
+  restartTitle: ReactNode;
+  restartDescription: ReactNode;
+  restartLabel: ReactNode;
+  restartTargetLabel: ReactNode;
+  restartConfirmTitle: ReactNode;
+  restartConfirmDescription: ReactNode;
+  restartCancelLabel: string;
+  restartConfirmLabel: ReactNode;
+  restartingLabel: ReactNode;
 };
 
 export type SettingsPageProps = {
@@ -91,7 +103,9 @@ export type SettingsPageProps = {
   copy: SettingsCopy;
   onLanguageChange: (lang: UtilityLanguage) => void;
   onRecheck: () => void;
+  onRestartCodex: () => Promise<boolean>;
   recheckBusy?: boolean;
+  restartBusy?: boolean;
 };
 
 type SettingRowProps = {
@@ -121,8 +135,19 @@ export function SettingsPage({
   copy,
   onLanguageChange,
   onRecheck,
+  onRestartCodex,
   recheckBusy = false,
+  restartBusy = false,
 }: SettingsPageProps) {
+  const [restartConfirmOpen, setRestartConfirmOpen] = useState(false);
+  const closeRestartConfirm = () => {
+    if (!restartBusy) setRestartConfirmOpen(false);
+  };
+  const confirmRestart = async () => {
+    if (restartBusy) return;
+    if (await onRestartCodex()) setRestartConfirmOpen(false);
+  };
+
   return (
     <section className="cx-utility cx-page cx-page--settings">
       <PageHeader eyebrow={copy.eyebrow} title={copy.title} />
@@ -176,7 +201,56 @@ export function SettingsPage({
             </button>
           )}
         />
+
+        <SettingRow
+          icon={Power}
+          title={copy.restartTitle}
+          description={copy.restartDescription}
+          action={(
+            <button
+              type="button"
+              className="cx-page-button cx-page-button--secondary"
+              onClick={() => setRestartConfirmOpen(true)}
+              disabled={restartBusy}
+            >
+              {restartBusy ? <Loader2 size={15} className="cx-page-spin" aria-hidden="true" /> : <Power size={15} aria-hidden="true" />}
+              {restartBusy ? copy.restartingLabel : copy.restartLabel}
+            </button>
+          )}
+        />
       </div>
+
+      <ModalShell
+        open={restartConfirmOpen}
+        onClose={closeRestartConfirm}
+        title={copy.restartConfirmTitle}
+        description={copy.restartConfirmDescription}
+        size="sm"
+        closeLabel={copy.restartCancelLabel}
+        closeOnBackdrop={!restartBusy}
+        closeOnEscape={!restartBusy}
+        showCloseButton={!restartBusy}
+        footer={(
+          <>
+            <Button variant="secondary" onClick={closeRestartConfirm} disabled={restartBusy} data-initial-focus>
+              {copy.restartCancelLabel}
+            </Button>
+            <Button
+              variant="danger"
+              icon={restartBusy ? <Loader2 size={16} className="cx-page-spin" /> : <Power size={16} />}
+              onClick={() => void confirmRestart()}
+              disabled={restartBusy}
+            >
+              {restartBusy ? copy.restartingLabel : copy.restartConfirmLabel}
+            </Button>
+          </>
+        )}
+      >
+        <div className="cx-page-restart-target">
+          <Power size={18} aria-hidden="true" />
+          <strong>{copy.restartTargetLabel}</strong>
+        </div>
+      </ModalShell>
     </section>
   );
 }

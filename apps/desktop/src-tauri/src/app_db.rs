@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
-const APP_DB_SCHEMA_VERSION: i64 = 1;
+const APP_DB_SCHEMA_VERSION: i64 = 3;
 
 struct DatabaseInitializer {
     migration_lock: Mutex<()>,
@@ -193,6 +193,19 @@ fn initialize_schema(conn: &Connection) -> Result<()> {
             content_hash TEXT,
             enabled INTEGER NOT NULL DEFAULT 0,
             updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS skills_mcp_notes (
+            codex_dir TEXT NOT NULL,
+            item_kind TEXT NOT NULL CHECK(item_kind IN ('skill', 'mcp')),
+            item_id TEXT NOT NULL,
+            note TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY(codex_dir, item_kind, item_id)
+        );
+        CREATE TABLE IF NOT EXISTS active_provider_selections (
+            codex_dir TEXT PRIMARY KEY,
+            provider_id TEXT NOT NULL,
+            updated_at TEXT NOT NULL
         );",
     )
     .map_err(|e| CodexxError::Database(e.to_string()))?;
@@ -319,7 +332,10 @@ mod tests {
         let path = test_db_path("replace-database");
         let initializer = DatabaseInitializer::new();
         let conn = initializer.open_at(&path).expect("initialize database");
-        assert_eq!(schema_version(&conn).expect("read schema version"), 1);
+        assert_eq!(
+            schema_version(&conn).expect("read schema version"),
+            APP_DB_SCHEMA_VERSION
+        );
         drop(conn);
 
         fs::remove_file(&path).expect("replace initialized database");
@@ -330,8 +346,74 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM providers", [], |row| row.get(0))
             .expect("query replacement database schema");
         assert_eq!(provider_count, 0);
-        assert_eq!(schema_version(&conn).expect("read replacement version"), 1);
+        assert_eq!(
+            schema_version(&conn).expect("read replacement version"),
+            APP_DB_SCHEMA_VERSION
+        );
         drop(conn);
+        remove_test_db(&path);
+    }
+
+    #[test]
+    fn version_one_database_migrates_new_metadata_tables_without_data_loss() {
+        let path = test_db_path("skills-mcp-notes-migration");
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("create legacy database directory");
+        }
+        let legacy = Connection::open(&path).expect("create legacy database");
+        legacy
+            .execute_batch(
+                "CREATE TABLE managed_skills (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    directory TEXT NOT NULL,
+                    source_path TEXT,
+                    content_hash TEXT,
+                    enabled INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL
+                );
+                INSERT INTO managed_skills
+                    (id, name, directory, enabled, updated_at)
+                VALUES ('legacy-skill', 'Legacy skill', 'legacy-skill', 1, '2026-01-01T00:00:00Z');
+                PRAGMA user_version = 1;",
+            )
+            .expect("seed version one database");
+        drop(legacy);
+
+        let initializer = DatabaseInitializer::new();
+        let migrated = initializer.open_at(&path).expect("migrate database");
+        assert_eq!(
+            schema_version(&migrated).expect("read migrated schema version"),
+            APP_DB_SCHEMA_VERSION
+        );
+        let skill_count: i64 = migrated
+            .query_row(
+                "SELECT COUNT(*) FROM managed_skills WHERE id = 'legacy-skill'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count preserved skill");
+        assert_eq!(skill_count, 1);
+        migrated
+            .execute(
+                "INSERT INTO skills_mcp_notes
+                    (codex_dir, item_kind, item_id, note, updated_at)
+                 VALUES
+                    ('/tmp/legacy-codex', 'skill', 'legacy-skill', 'my note', '2026-01-02T00:00:00Z')",
+                [],
+            )
+            .expect("write note after migration");
+        migrated
+            .execute(
+                "INSERT INTO active_provider_selections
+                    (codex_dir, provider_id, updated_at)
+                 VALUES
+                    ('/tmp/legacy-codex', 'legacy-provider', '2026-01-02T00:00:00Z')",
+                [],
+            )
+            .expect("write active provider selection after migration");
+        drop(migrated);
         remove_test_db(&path);
     }
 

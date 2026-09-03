@@ -395,7 +395,6 @@ pub(crate) fn import_ccswitch_codex_providers_inner(path: Option<String>) -> Res
                 match result.kind {
                     ProviderUpsertKind::Added => added += 1,
                     ProviderUpsertKind::Updated => updated += 1,
-                    ProviderUpsertKind::Merged => merged += 1,
                 }
                 imported += 1;
             }

@@ -258,6 +258,7 @@ pub(super) fn scan_skill_dir(
             id: id.clone(),
             name,
             description,
+            note: None,
             directory,
             enabled,
             source: source.to_string(),

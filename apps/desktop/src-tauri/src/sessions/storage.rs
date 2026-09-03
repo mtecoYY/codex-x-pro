@@ -11,7 +11,7 @@ use rusqlite::{Connection, OpenFlags};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::io::Read;
+use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use toml_edit::DocumentMut;
@@ -62,6 +62,7 @@ pub(super) fn is_canonical_rollout_storage_path(codex_dir: &Path, path: &Path) -
 fn referenced_rollout_paths(
     codex_dir: &Path,
     rollout_paths_by_thread_id: &HashMap<String, String>,
+    include_archived_storage: bool,
     failures: &mut Vec<String>,
 ) -> HashMap<PathBuf, HashSet<String>> {
     let mut referenced = HashMap::<PathBuf, HashSet<String>>::new();
@@ -106,11 +107,23 @@ fn referenced_rollout_paths(
                 continue;
             }
         };
-        if !is_canonical_rollout_storage_path(codex_dir, &canonical) {
-            failures.push(format!(
-                "活动 SQLite 引用的会话文件超出 Codex 会话目录: {}",
-                path.display()
-            ));
+        let within_codex_storage = is_canonical_rollout_storage_path(codex_dir, &canonical);
+        let allowed_root = if include_archived_storage {
+            within_codex_storage
+        } else {
+            within_codex_storage
+                && codex_dir
+                    .join("sessions")
+                    .canonicalize()
+                    .is_ok_and(|root| canonical.starts_with(root))
+        };
+        if !allowed_root {
+            let reason = if within_codex_storage {
+                "活动 SQLite 引用了归档会话文件"
+            } else {
+                "活动 SQLite 引用的会话文件超出 Codex 会话目录"
+            };
+            failures.push(format!("{reason}: {}", path.display()));
             continue;
         }
         let expected_thread_ids = referenced.entry(canonical.clone()).or_default();
@@ -180,21 +193,198 @@ fn is_locked_io_error(error: &std::io::Error) -> bool {
         || matches!(error.raw_os_error(), Some(32 | 33))
 }
 
-pub(crate) fn scan_rollouts(codex_dir: &Path, target_provider: &str) -> Result<RolloutScan> {
-    scan_rollouts_with_thread_filter(codex_dir, target_provider, None, None)
+pub(crate) const MAX_ROLLOUT_LOAD_BYTES: u64 = 32 * 1024 * 1024;
+const MAX_ROLLOUT_METADATA_LINE_BYTES: usize = 1024 * 1024;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum RolloutScanMode {
+    MetadataOnly,
+    CollectChanges,
 }
 
-pub(super) fn scan_rollouts_for_thread_ids(
+#[derive(Debug, Default)]
+struct RolloutFileMetadata {
+    file_session_meta_count: usize,
+    file_mismatched_session_meta: usize,
+    invalid_json_lines: usize,
+    invalid_session_meta: usize,
+    oversized_lines: usize,
+    thread_id: Option<String>,
+    cwd: Option<String>,
+    is_subagent: bool,
+}
+
+fn oversized_rollout_size(rollouts: &RolloutScan, value: &str) -> Option<u64> {
+    let path = PathBuf::from(value);
+    rollouts
+        .oversized_rollouts
+        .get(&path)
+        .copied()
+        .or_else(|| {
+            rollouts.codex_dir.as_deref().and_then(|codex_dir| {
+                let resolved = if path.is_absolute() {
+                    path.clone()
+                } else {
+                    codex_dir.join(&path)
+                };
+                rollouts
+                    .oversized_rollouts
+                    .get(&resolved)
+                    .copied()
+                    .or_else(|| {
+                        resolved.canonicalize().ok().and_then(|canonical| {
+                            rollouts.oversized_rollouts.get(&canonical).copied()
+                        })
+                    })
+            })
+        })
+        .or_else(|| {
+            path.canonicalize()
+                .ok()
+                .and_then(|canonical| rollouts.oversized_rollouts.get(&canonical).copied())
+        })
+        .or_else(|| {
+            fs::metadata(&path)
+                .ok()
+                .map(|metadata| metadata.len())
+                .filter(|size| *size > MAX_ROLLOUT_LOAD_BYTES)
+        })
+}
+
+fn read_bounded_line<R: BufRead>(
+    reader: &mut R,
+    buffer: &mut Vec<u8>,
+    max_bytes: usize,
+) -> std::io::Result<Option<bool>> {
+    buffer.clear();
+    let mut truncated = false;
+    loop {
+        let available = reader.fill_buf()?;
+        if available.is_empty() {
+            return Ok((!buffer.is_empty()).then_some(truncated));
+        }
+        let newline = available.iter().position(|byte| *byte == b'\n');
+        let take = newline.map_or(available.len(), |position| position + 1);
+        let room = max_bytes.saturating_sub(buffer.len());
+        if room > 0 {
+            let copy = take.min(room);
+            buffer.extend_from_slice(&available[..copy]);
+        }
+        if take > room {
+            truncated = true;
+        }
+        reader.consume(take);
+        if newline.is_some() {
+            return Ok(Some(truncated));
+        }
+    }
+}
+
+fn scan_rollout_file_metadata(
+    path: &Path,
+    target_provider: &str,
+) -> std::io::Result<RolloutFileMetadata> {
+    let file = fs::File::open(path)?;
+    let mut reader = BufReader::new(file);
+    let mut buffer = Vec::new();
+    let mut metadata = RolloutFileMetadata::default();
+
+    while let Some(truncated) =
+        read_bounded_line(&mut reader, &mut buffer, MAX_ROLLOUT_METADATA_LINE_BYTES)?
+    {
+        if truncated {
+            metadata.oversized_lines += 1;
+            continue;
+        }
+        let raw_line = std::str::from_utf8(&buffer)
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+        let (line, _) = split_line_ending(raw_line);
+        if line.trim().is_empty() {
+            continue;
+        }
+        let Ok(record) = serde_json::from_str::<Value>(line) else {
+            metadata.invalid_json_lines += 1;
+            continue;
+        };
+        if record.get("type").and_then(Value::as_str) != Some("session_meta") {
+            continue;
+        }
+        let Some(payload) = record.get("payload").and_then(Value::as_object) else {
+            metadata.invalid_session_meta += 1;
+            continue;
+        };
+        metadata.file_session_meta_count += 1;
+        if metadata.thread_id.is_none() {
+            metadata.thread_id = payload
+                .get("id")
+                .and_then(Value::as_str)
+                .map(ToString::to_string);
+        }
+        if metadata.cwd.is_none() {
+            metadata.cwd = payload
+                .get("cwd")
+                .and_then(Value::as_str)
+                .and_then(normalize_workspace_path);
+        }
+        if payload.get("source").is_some_and(source_value_is_subagent) {
+            metadata.is_subagent = true;
+        }
+        if payload.get("model_provider").and_then(Value::as_str) != Some(target_provider) {
+            metadata.file_mismatched_session_meta += 1;
+        }
+        break;
+    }
+
+    Ok(metadata)
+}
+
+pub(crate) fn scan_rollouts(codex_dir: &Path, target_provider: &str) -> Result<RolloutScan> {
+    scan_rollouts_with_thread_filter(
+        codex_dir,
+        target_provider,
+        None,
+        None,
+        true,
+        None,
+        false,
+        RolloutScanMode::CollectChanges,
+    )
+}
+
+pub(super) fn scan_provider_rollouts(
+    codex_dir: &Path,
+    target_provider: &str,
+    excluded_thread_ids: &HashSet<String>,
+    mode: RolloutScanMode,
+) -> Result<RolloutScan> {
+    scan_rollouts_with_thread_filter(
+        codex_dir,
+        target_provider,
+        None,
+        None,
+        false,
+        Some(excluded_thread_ids),
+        true,
+        mode,
+    )
+}
+
+pub(super) fn scan_rollouts_for_thread_ids_with_mode(
     codex_dir: &Path,
     target_provider: &str,
     thread_ids: &HashSet<String>,
     rollout_paths_by_thread_id: &HashMap<String, String>,
+    mode: RolloutScanMode,
 ) -> Result<RolloutScan> {
     scan_rollouts_with_thread_filter(
         codex_dir,
         target_provider,
         Some(thread_ids),
         Some(rollout_paths_by_thread_id),
+        false,
+        None,
+        false,
+        mode,
     )
 }
 
@@ -203,15 +393,38 @@ fn scan_rollouts_with_thread_filter(
     target_provider: &str,
     allowed_thread_ids: Option<&HashSet<String>>,
     rollout_paths_by_thread_id: Option<&HashMap<String, String>>,
+    include_archived_storage: bool,
+    excluded_thread_ids: Option<&HashSet<String>>,
+    exclude_source_marked_subagents: bool,
+    mode: RolloutScanMode,
 ) -> Result<RolloutScan> {
     let mut paths = Vec::new();
-    let mut scan = RolloutScan::default();
+    let mut scan = RolloutScan {
+        codex_dir: Some(codex_dir.to_path_buf()),
+        ..RolloutScan::default()
+    };
     let mut referenced = HashMap::new();
-    for dir in ["sessions", "archived_sessions"] {
-        collect_rollout_paths(&codex_dir.join(dir), &mut paths, &mut scan.scan_failures);
+    collect_rollout_paths(
+        &codex_dir.join("sessions"),
+        &mut paths,
+        &mut scan.scan_failures,
+    );
+    if include_archived_storage {
+        collect_rollout_paths(
+            &codex_dir.join("archived_sessions"),
+            &mut paths,
+            &mut scan.scan_failures,
+        );
     }
     paths.sort();
     scan.discovered_rollout_files = paths.len();
+    if let Some(excluded_thread_ids) = excluded_thread_ids {
+        paths.retain(|path| {
+            !excluded_thread_ids
+                .iter()
+                .any(|id| rollout_filename_matches_id(path, id))
+        });
+    }
     if let Some(allowed_thread_ids) = allowed_thread_ids {
         let empty_rollout_paths = HashMap::new();
         let rollout_paths_by_thread_id = rollout_paths_by_thread_id.unwrap_or(&empty_rollout_paths);
@@ -223,6 +436,7 @@ fn scan_rollouts_with_thread_filter(
         referenced = referenced_rollout_paths(
             codex_dir,
             rollout_paths_by_thread_id,
+            include_archived_storage,
             &mut scan.scan_failures,
         );
         paths.retain(|path| {
@@ -243,6 +457,116 @@ fn scan_rollouts_with_thread_filter(
             .canonicalize()
             .ok()
             .and_then(|canonical| referenced.get(&canonical));
+        let metadata = match fs::metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                let reason = if is_locked_io_error(&error) {
+                    "session file is locked or unavailable"
+                } else {
+                    "unable to inspect session file"
+                };
+                scan.scan_failures
+                    .push(format!("{reason}: {} ({error})", path.display()));
+                continue;
+            }
+        };
+        let file_size = metadata.len();
+        if file_size > MAX_ROLLOUT_LOAD_BYTES {
+            if let Ok(canonical) = path.canonicalize() {
+                scan.oversized_rollouts.insert(canonical, file_size);
+            }
+            scan.oversized_rollouts.insert(path.clone(), file_size);
+            scan.warnings.push(format!(
+                "session content skipped because it is too large: {} ({:.2} MiB)",
+                path.display(),
+                file_size as f64 / (1024.0 * 1024.0)
+            ));
+            continue;
+        }
+        if mode == RolloutScanMode::MetadataOnly {
+            let metadata = match scan_rollout_file_metadata(&path, target_provider) {
+                Ok(metadata) => metadata,
+                Err(error) => {
+                    let reason = if is_locked_io_error(&error) {
+                        "会话文件被占用或无权限读取"
+                    } else {
+                        "无法读取会话文件"
+                    };
+                    scan.scan_failures
+                        .push(format!("{reason}: {} ({error})", path.display()));
+                    continue;
+                }
+            };
+            if (exclude_source_marked_subagents && metadata.is_subagent)
+                || metadata.thread_id.as_ref().is_some_and(|id| {
+                    excluded_thread_ids.is_some_and(|excluded| excluded.contains(id))
+                })
+            {
+                continue;
+            }
+            if metadata.invalid_json_lines > 0 {
+                scan.scan_failures.push(format!(
+                    "会话文件包含 {} 行无法解析的 JSON: {}",
+                    metadata.invalid_json_lines,
+                    path.display()
+                ));
+            }
+            if metadata.invalid_session_meta > 0 {
+                scan.scan_failures.push(format!(
+                    "会话文件包含 {} 条无法读取的 session_meta: {}",
+                    metadata.invalid_session_meta,
+                    path.display()
+                ));
+            }
+            if metadata.oversized_lines > 0 {
+                scan.warnings.push(format!(
+                    "session metadata scan skipped {} line(s) over {} bytes: {}",
+                    metadata.oversized_lines,
+                    MAX_ROLLOUT_METADATA_LINE_BYTES,
+                    path.display()
+                ));
+            }
+
+            if metadata.file_session_meta_count == 0 {
+                if expected_thread_ids.is_some() {
+                    scan.scan_failures.push(format!(
+                        "活动 SQLite 引用的会话文件缺少 session_meta: {}",
+                        path.display()
+                    ));
+                }
+                continue;
+            }
+            let Some(thread_id) = metadata.thread_id else {
+                scan.scan_failures.push(format!(
+                    "会话文件的 session_meta 缺少 id: {}",
+                    path.display()
+                ));
+                continue;
+            };
+            if let Some(expected_thread_ids) = expected_thread_ids {
+                if expected_thread_ids.len() != 1 || !expected_thread_ids.contains(&thread_id) {
+                    scan.scan_failures.push(format!(
+                        "活动 SQLite 引用的会话文件与线程 ID 不一致: {}",
+                        path.display()
+                    ));
+                    continue;
+                }
+            }
+            if allowed_thread_ids.is_some_and(|allowed| !allowed.contains(&thread_id)) {
+                continue;
+            }
+            scan.session_meta_count += metadata.file_session_meta_count;
+            scan.thread_ids.insert(thread_id.clone());
+            if let Some(cwd) = metadata.cwd {
+                scan.cwd_by_thread_id.insert(thread_id.clone(), cwd);
+            }
+            if metadata.file_mismatched_session_meta > 0 {
+                scan.mismatched_rollouts += 1;
+                scan.mismatched_session_meta += metadata.file_mismatched_session_meta;
+                scan.mismatched_thread_ids.insert(thread_id);
+            }
+            continue;
+        }
         let text = match fs::read_to_string(&path) {
             Ok(text) => text,
             Err(error) => {
@@ -264,6 +588,7 @@ fn scan_rollouts_with_thread_filter(
         let mut invalid_session_meta = 0usize;
         let mut thread_id = None;
         let mut cwd = None;
+        let mut is_subagent = false;
 
         for segment in text.split_inclusive('\n') {
             let (line, line_ending) = split_line_ending(segment);
@@ -286,6 +611,9 @@ fn scan_rollouts_with_thread_filter(
                                     .get("cwd")
                                     .and_then(Value::as_str)
                                     .and_then(normalize_workspace_path);
+                            }
+                            if payload.get("source").is_some_and(source_value_is_subagent) {
+                                is_subagent = true;
                             }
                             if payload.get("model_provider").and_then(Value::as_str)
                                 != Some(target_provider)
@@ -311,6 +639,13 @@ fn scan_rollouts_with_thread_filter(
             next_text.push_str(line_ending);
         }
 
+        if (exclude_source_marked_subagents && is_subagent)
+            || thread_id
+                .as_ref()
+                .is_some_and(|id| excluded_thread_ids.is_some_and(|excluded| excluded.contains(id)))
+        {
+            continue;
+        }
         if invalid_json_lines > 0 {
             scan.scan_failures.push(format!(
                 "会话文件包含 {invalid_json_lines} 行无法解析的 JSON: {}",
@@ -353,6 +688,7 @@ fn scan_rollouts_with_thread_filter(
             continue;
         }
         scan.session_meta_count += file_session_meta_count;
+        scan.thread_ids.insert(thread_id.clone());
         if let Some(cwd) = cwd {
             scan.cwd_by_thread_id.insert(thread_id.clone(), cwd);
         }
@@ -915,15 +1251,7 @@ pub(super) fn sqlite_subagent_thread_ids(
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
             {
-                let source_is_subagent = source.eq_ignore_ascii_case("subagent")
-                    || serde_json::from_str::<Value>(source)
-                        .ok()
-                        .is_some_and(|value| {
-                            value
-                                .as_object()
-                                .is_some_and(|object| object.contains_key("subagent"))
-                        });
-                if source_is_subagent {
+                if source_text_is_subagent(source) {
                     ids.insert(id);
                 } else {
                     ids.remove(&id);
@@ -935,11 +1263,29 @@ pub(super) fn sqlite_subagent_thread_ids(
     Ok(ids)
 }
 
+fn source_value_is_subagent(source: &Value) -> bool {
+    match source {
+        Value::String(source) => source.trim().eq_ignore_ascii_case("subagent"),
+        Value::Object(source) => source.contains_key("subagent"),
+        _ => false,
+    }
+}
+
+fn source_text_is_subagent(source: &str) -> bool {
+    let source = source.trim();
+    source.eq_ignore_ascii_case("subagent")
+        || serde_json::from_str::<Value>(source)
+            .ok()
+            .as_ref()
+            .is_some_and(source_value_is_subagent)
+}
+
 pub(super) struct SqliteThreadIndexState<'a> {
     pub(super) thread_id: &'a str,
     pub(super) provider: Option<&'a str>,
     pub(super) cwd: Option<&'a str>,
     pub(super) cwd_column: bool,
+    pub(super) archived: bool,
 }
 
 pub(super) fn sqlite_thread_needs_alignment(
@@ -947,6 +1293,9 @@ pub(super) fn sqlite_thread_needs_alignment(
     target_provider: &str,
     state: &SqliteThreadIndexState<'_>,
 ) -> bool {
+    if state.archived {
+        return false;
+    }
     if state.provider.map(str::trim).unwrap_or_default() != target_provider {
         return true;
     }
@@ -979,6 +1328,8 @@ pub(super) fn scan_sqlite_with_paths(
 ) -> Result<SqliteScan> {
     let mut scan = SqliteScan::default();
     let mut thread_ids = HashSet::new();
+    let mut syncable_thread_ids = HashSet::new();
+    let mut archived_thread_ids = HashSet::new();
     let mut rollout_paths_by_thread_id = HashMap::new();
     let mut subagent_ids = HashSet::new();
     let mut mismatched_ids = HashSet::new();
@@ -1008,8 +1359,10 @@ pub(super) fn scan_sqlite_with_paths(
         scan.sqlite_dbs += 1;
         let cwd_col = sql_select_column(&cols, "cwd", "NULL");
         let rollout_col = sql_select_column(&cols, "rollout_path", "NULL");
-        let query =
-            format!("SELECT \"id\", \"model_provider\", {cwd_col}, {rollout_col} FROM threads");
+        let archived_col = sql_select_column(&cols, "archived", "0");
+        let query = format!(
+            "SELECT \"id\", \"model_provider\", {cwd_col}, {rollout_col}, {archived_col} FROM threads"
+        );
         let mut stmt = conn
             .prepare(&query)
             .map_err(|e| CodexxError::Database(e.to_string()))?;
@@ -1020,18 +1373,25 @@ pub(super) fn scan_sqlite_with_paths(
                     row.get::<_, Option<String>>(1)?,
                     row.get::<_, Option<String>>(2)?,
                     row.get::<_, Option<String>>(3)?,
+                    row.get::<_, i64>(4)?,
                 ))
             })
             .map_err(|e| CodexxError::Database(e.to_string()))?;
         for row in rows {
-            let (id, provider, cwd, rollout_path) =
+            let (id, provider, cwd, rollout_path, archived) =
                 row.map_err(|e| CodexxError::Database(e.to_string()))?;
             thread_ids.insert(id.clone());
-            if let Some(rollout_path) = rollout_path
-                .map(|path| path.trim().to_string())
-                .filter(|path| !path.is_empty())
-            {
-                rollout_paths_by_thread_id.insert(id.clone(), rollout_path);
+            let archived = archived != 0;
+            if archived {
+                archived_thread_ids.insert(id.clone());
+            } else {
+                syncable_thread_ids.insert(id.clone());
+                if let Some(rollout_path) = rollout_path
+                    .map(|path| path.trim().to_string())
+                    .filter(|path| !path.is_empty())
+                {
+                    rollout_paths_by_thread_id.insert(id.clone(), rollout_path);
+                }
             }
             if sqlite_thread_needs_alignment(
                 rollouts,
@@ -1041,6 +1401,7 @@ pub(super) fn scan_sqlite_with_paths(
                     provider: provider.as_deref(),
                     cwd: cwd.as_deref(),
                     cwd_column: cols.contains("cwd"),
+                    archived,
                 },
             ) {
                 mismatched_ids.insert(id);
@@ -1049,11 +1410,17 @@ pub(super) fn scan_sqlite_with_paths(
         subagent_ids.extend(sqlite_subagent_thread_ids(&conn, &cols)?);
     }
     subagent_ids.retain(|id| thread_ids.contains(id));
+    syncable_thread_ids.retain(|id| !subagent_ids.contains(id));
+    rollout_paths_by_thread_id.retain(|id, _| !subagent_ids.contains(id));
+    mismatched_ids.retain(|id| !subagent_ids.contains(id));
     scan.sqlite_threads = thread_ids.len();
     scan.subagent_threads = subagent_ids.len();
     scan.top_level_threads = thread_ids.len().saturating_sub(subagent_ids.len());
     scan.mismatched_threads = mismatched_ids.len();
     scan.thread_ids = thread_ids;
+    scan.syncable_thread_ids = syncable_thread_ids;
+    scan.archived_thread_ids = archived_thread_ids;
+    scan.subagent_thread_ids = subagent_ids;
     scan.rollout_paths_by_thread_id = rollout_paths_by_thread_id;
     scan.mismatched_thread_ids = mismatched_ids;
     Ok(scan)
@@ -1160,18 +1527,25 @@ pub(super) fn list_session_previews_with_paths(
                     .as_ref()
                     .map(|v| v.trim().to_string())
                     .filter(|v| !v.is_empty());
-                let needs_sync = rollouts.mismatched_thread_ids.contains(&id)
-                    || sqlite_thread_needs_alignment(
-                        rollouts,
-                        target_provider,
-                        &SqliteThreadIndexState {
-                            thread_id: &id,
-                            provider: normalized_provider.as_deref(),
-                            cwd: normalized_cwd.as_deref(),
-                            cwd_column: cols.contains("cwd"),
-                        },
-                    );
+                let rollout_size_bytes = normalized_rollout_path
+                    .as_deref()
+                    .and_then(|path| oversized_rollout_size(rollouts, path));
+                let is_archived = archived != 0;
                 let is_subagent = subagent_thread_ids.contains(&id);
+                let needs_sync = !is_archived
+                    && !is_subagent
+                    && (rollouts.mismatched_thread_ids.contains(&id)
+                        || sqlite_thread_needs_alignment(
+                            rollouts,
+                            target_provider,
+                            &SqliteThreadIndexState {
+                                thread_id: &id,
+                                provider: normalized_provider.as_deref(),
+                                cwd: normalized_cwd.as_deref(),
+                                cwd_column: cols.contains("cwd"),
+                                archived: is_archived,
+                            },
+                        ));
                 Ok(SessionPreview {
                     id,
                     title: clean_title,
@@ -1182,8 +1556,10 @@ pub(super) fn list_session_previews_with_paths(
                     }),
                     cwd: normalized_cwd,
                     rollout_path: normalized_rollout_path,
+                    rollout_size_bytes,
+                    load_blocked: rollout_size_bytes.is_some(),
                     updated_at_ms: updated_at_ms.or_else(|| updated_at.map(|v| v * 1000)),
-                    archived: archived != 0,
+                    archived: is_archived,
                     has_user_event: has_user_event != 0,
                     is_subagent,
                     needs_sync,
@@ -1519,6 +1895,102 @@ mod tests {
         .0;
         assert_eq!(previews.len(), 1);
         assert_eq!(previews[0].title, "active title");
+
+        let _ = fs::remove_dir_all(codex_dir);
+    }
+
+    #[test]
+    fn oversized_rollout_is_skipped_before_reading_contents() {
+        let codex_dir = temp_codex_dir("oversized-rollout-scan");
+        let rollout = codex_dir.join("sessions/rollout-oversized.jsonl");
+        fs::create_dir_all(rollout.parent().expect("rollout parent")).expect("create rollout dir");
+        let file = fs::File::create(&rollout).expect("create sparse rollout");
+        file.set_len(MAX_ROLLOUT_LOAD_BYTES + 1)
+            .expect("grow sparse rollout");
+
+        let scan = scan_rollouts(&codex_dir, "openai").expect("scan rollout");
+
+        assert!(scan.scan_failures.is_empty());
+        assert!(scan.changes.is_empty());
+        assert_eq!(
+            scan.oversized_rollouts.get(&rollout),
+            Some(&(MAX_ROLLOUT_LOAD_BYTES + 1))
+        );
+
+        let _ = fs::remove_dir_all(codex_dir);
+    }
+
+    #[test]
+    fn session_preview_marks_oversized_rollout_without_loading_it() {
+        let codex_dir = temp_codex_dir("oversized-rollout-preview");
+        let database = codex_dir.join("state_10.sqlite");
+        let rollout = codex_dir.join("sessions/rollout-oversized-preview.jsonl");
+        let id = "019f6000-0000-7000-8000-000000000391";
+        fs::create_dir_all(rollout.parent().expect("rollout parent")).expect("create rollout dir");
+        let file = fs::File::create(&rollout).expect("create sparse rollout");
+        file.set_len(MAX_ROLLOUT_LOAD_BYTES + 1)
+            .expect("grow sparse rollout");
+        create_thread_database(&database, id, "openai");
+        Connection::open(&database)
+            .expect("open preview database")
+            .execute("ALTER TABLE threads ADD COLUMN rollout_path TEXT", [])
+            .expect("add rollout path");
+        Connection::open(&database)
+            .expect("open preview database for update")
+            .execute(
+                "UPDATE threads SET rollout_path = ?1 WHERE id = ?2",
+                ("sessions/rollout-oversized-preview.jsonl", id),
+            )
+            .expect("link rollout path");
+
+        let scan = scan_rollouts(&codex_dir, "openai").expect("scan rollout");
+        let sessions = list_session_previews_with_paths(&[database], &scan, "openai", 50)
+            .expect("list session previews")
+            .0;
+
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(
+            sessions[0].rollout_size_bytes,
+            Some(MAX_ROLLOUT_LOAD_BYTES + 1)
+        );
+        assert!(sessions[0].load_blocked);
+
+        let _ = fs::remove_dir_all(codex_dir);
+    }
+
+    #[test]
+    fn metadata_only_rollout_scan_counts_mismatch_without_retaining_text() {
+        let codex_dir = temp_codex_dir("metadata-only-rollout-scan");
+        let rollout = codex_dir.join(
+            "sessions/2026/09/04/rollout-2026-09-04T00-00-00-019f6000-0000-7000-8000-000000000392.jsonl",
+        );
+        let id = "019f6000-0000-7000-8000-000000000392";
+        fs::create_dir_all(rollout.parent().expect("rollout parent")).expect("create rollout dir");
+        fs::write(
+            &rollout,
+            format!(
+                "{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"{id}\",\"model_provider\":\"openai\",\"cwd\":\"F:/project\"}}}}\n{{\"type\":\"response_item\",\"payload\":{{\"text\":\"ignored\"}}}}\n"
+            ),
+        )
+        .expect("write rollout");
+
+        let scan = scan_rollouts_with_thread_filter(
+            &codex_dir,
+            "custom",
+            None,
+            None,
+            true,
+            None,
+            false,
+            RolloutScanMode::MetadataOnly,
+        )
+        .expect("scan rollout metadata");
+
+        assert!(scan.scan_failures.is_empty());
+        assert_eq!(scan.mismatched_rollouts, 1);
+        assert_eq!(scan.mismatched_session_meta, 1);
+        assert!(scan.mismatched_thread_ids.contains(id));
+        assert!(scan.changes.is_empty());
 
         let _ = fs::remove_dir_all(codex_dir);
     }

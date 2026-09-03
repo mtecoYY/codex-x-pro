@@ -32,6 +32,9 @@ apple cert/
 codex-x-updater.key
 codex-new-ui/
 
+# Personal local gateway scripts (normally under the user's home directory)
+.codex-x/gateway-tools/
+
 # Backups
 *.bak
 *.bak_*

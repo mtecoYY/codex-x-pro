@@ -12,6 +12,8 @@ pub(crate) struct SessionPreview {
     pub(crate) model: Option<String>,
     pub(crate) cwd: Option<String>,
     pub(crate) rollout_path: Option<String>,
+    pub(crate) rollout_size_bytes: Option<u64>,
+    pub(crate) load_blocked: bool,
     pub(crate) updated_at_ms: Option<i64>,
     pub(crate) archived: bool,
     pub(crate) has_user_event: bool,
@@ -53,6 +55,7 @@ pub(crate) struct SessionSyncResult {
 
 #[derive(Debug, Default)]
 pub(crate) struct RolloutScan {
+    pub(crate) codex_dir: Option<PathBuf>,
     pub(crate) discovered_rollout_files: usize,
     pub(crate) rollout_files: usize,
     pub(crate) session_meta_count: usize,
@@ -60,9 +63,11 @@ pub(crate) struct RolloutScan {
     pub(crate) mismatched_session_meta: usize,
     pub(crate) changes: Vec<SessionFileChange>,
     pub(crate) cwd_by_thread_id: HashMap<String, String>,
+    pub(crate) thread_ids: HashSet<String>,
     pub(crate) mismatched_thread_ids: HashSet<String>,
     pub(crate) warnings: Vec<String>,
     pub(crate) scan_failures: Vec<String>,
+    pub(crate) oversized_rollouts: HashMap<PathBuf, u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -81,6 +86,9 @@ pub(crate) struct SqliteScan {
     pub(crate) subagent_threads: usize,
     pub(crate) mismatched_threads: usize,
     pub(crate) thread_ids: HashSet<String>,
+    pub(crate) syncable_thread_ids: HashSet<String>,
+    pub(crate) archived_thread_ids: HashSet<String>,
+    pub(crate) subagent_thread_ids: HashSet<String>,
     pub(crate) rollout_paths_by_thread_id: HashMap<String, String>,
     pub(crate) mismatched_thread_ids: HashSet<String>,
     pub(crate) warnings: Vec<String>,

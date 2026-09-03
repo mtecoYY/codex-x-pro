@@ -7,8 +7,9 @@ use crate::prompts::{
     agents_path, managed_agents_template_key, prompt_template_key_for_instruction,
 };
 use crate::providers::{
-    detected_live_custom_provider, document_is_official, list_saved_providers_inner,
-    official_auth_available, unique_saved_provider_id_for_live, SavedProvider,
+    clear_active_provider_on_connection, detected_live_custom_provider, document_is_official,
+    list_saved_providers_on_connection, matching_saved_provider_ids_for_live,
+    official_auth_available, open_store, reconcile_active_provider_on_connection, SavedProvider,
 };
 use crate::{auth_path, config_path, string_value};
 use serde::Serialize;
@@ -31,7 +32,7 @@ struct ProviderSummary {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct CodexState {
-    codex_dir: String,
+    pub(crate) codex_dir: String,
     config_path: String,
     auth_path: String,
     config_exists: bool,
@@ -45,7 +46,7 @@ pub(crate) struct CodexState {
     pub(crate) instruction_injection_mode: Option<String>,
     pub(crate) instruction_template_key: Option<String>,
     agents_path: String,
-    active_saved_provider_id: Option<String>,
+    pub(crate) active_saved_provider_id: Option<String>,
     providers: Vec<ProviderSummary>,
     pub(crate) config_text: String,
     auth_preview: Option<Value>,
@@ -159,15 +160,15 @@ fn normalized_provider_toml_for_match(text: &str) -> String {
         .to_string()
 }
 
-pub(crate) fn active_saved_provider_id_from_config(
+fn matching_saved_provider_ids_from_config(
     config_text: &str,
     providers: &[SavedProvider],
-) -> Option<String> {
+) -> Vec<String> {
     let live = normalized_provider_toml_for_match(config_text);
     if live.is_empty() {
-        return None;
+        return Vec::new();
     }
-    let matches = providers
+    providers
         .iter()
         .filter(|provider| {
             provider
@@ -175,8 +176,17 @@ pub(crate) fn active_saved_provider_id_from_config(
                 .as_deref()
                 .is_some_and(|toml| normalized_provider_toml_for_match(toml) == live)
         })
-        .collect::<Vec<_>>();
-    (matches.len() == 1).then(|| matches[0].id.clone())
+        .map(|provider| provider.id.clone())
+        .collect()
+}
+
+#[cfg(test)]
+pub(crate) fn active_saved_provider_id_from_config(
+    config_text: &str,
+    providers: &[SavedProvider],
+) -> Option<String> {
+    let matches = matching_saved_provider_ids_from_config(config_text, providers);
+    (matches.len() == 1).then(|| matches[0].clone())
 }
 
 #[cfg(test)]
@@ -210,13 +220,17 @@ pub(crate) fn build_state_after_migration(codex_dir: PathBuf) -> Result<CodexSta
         };
     let instruction_enabled = instruction_template_key.is_some();
     let providers = extract_providers(&doc, model_provider.as_deref());
-    let saved_providers = list_saved_providers_inner()?;
+    let conn = open_store()?;
+    let saved_providers = list_saved_providers_on_connection(&conn)?;
     let active_saved_provider_id = if is_official_provider {
+        clear_active_provider_on_connection(&conn, &codex_dir)?;
         None
     } else if let Some(live) = detected_live_custom_provider(&codex_dir)? {
-        unique_saved_provider_id_for_live(&live, &saved_providers)
+        let candidates = matching_saved_provider_ids_for_live(&live, &saved_providers);
+        reconcile_active_provider_on_connection(&conn, &codex_dir, &candidates)?
     } else {
-        active_saved_provider_id_from_config(&text, &saved_providers)
+        let candidates = matching_saved_provider_ids_from_config(&text, &saved_providers);
+        reconcile_active_provider_on_connection(&conn, &codex_dir, &candidates)?
     };
 
     Ok(CodexState {

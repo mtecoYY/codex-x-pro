@@ -11,7 +11,10 @@ import {
 import { OverviewPage } from "./pages/OverviewPage";
 import { AboutPage, SettingsPage, TomlConfigPage } from "./pages/UtilityPages";
 import { PromptsPage } from "./pages/PromptsPage";
-import { SkillsMcpPage } from "./pages/SkillsMcpPage";
+import { SkillsMcpPage, type SkillsMcpNoteKind } from "./pages/SkillsMcpPage";
+import { GatewayPage } from "./pages/GatewayPage";
+import { GatewayObservePage } from "./pages/GatewayObservePage";
+import { GatewayScriptsPage } from "./pages/GatewayScriptsPage";
 import { ProvidersPage, type ProviderCopy, type ProviderRow } from "./pages/ProvidersPage";
 import { AppShell, type AppTab, type AppTheme } from "./components/AppShell";
 import {
@@ -22,13 +25,19 @@ import {
 import { PageTransition } from "./components/PageTransition";
 import { cx } from "./components/ui";
 import { appUpdater, useAppUpdater } from "./appUpdater";
+import { providerProfilesMatch, type ProviderProfile } from "./providerProfiles";
+import { orderProviderRows } from "./providerRowOrder";
+import { gatewayCommands } from "./gatewayCommands";
+import { gatewayUsesRuntime } from "./gatewayState";
 import type {
   AboutInfo,
   ActionResult,
   AppUpdateInfo,
   BuiltinPromptDetail,
   BuiltinPromptStatus,
+  CodexDesktopRestartResult,
   CodexState,
+  GatewayProcessState,
   ImportResult,
   InstructionMode,
   InstructionTemplate,
@@ -355,6 +364,7 @@ function getProviderPageCopy(lang: Lang): ProviderCopy {
     enableLabel: isChinese ? "启用" : "Enable",
     testLabel: isChinese ? "测试连接" : "Test connection",
     editLabel: t.provider.edit,
+    duplicateLabel: isChinese ? "复制供应商" : "Duplicate provider",
     removeLabel: t.provider.remove,
     deleteTitle: isChinese ? "删除供应商" : "Delete provider",
     deleteDescription: (providerName) => isChinese
@@ -481,25 +491,6 @@ function extractOpenAiApiKey(authText?: string) {
   }
 }
 
-function normalizeProviderBaseUrl(value?: string | null) {
-  const raw = (value || "").trim();
-  if (!raw) return "";
-  try {
-    const parsed = new URL(raw);
-    const credentials = parsed.username
-      ? `${parsed.username}${parsed.password ? `:${parsed.password}` : ""}@`
-      : "";
-    const path = parsed.pathname.replace(/\/+$/, "");
-    return `${parsed.protocol.toLowerCase()}//${credentials}${parsed.host.toLowerCase()}${path}${parsed.search}`;
-  } catch {
-    return raw.replace(/\/+$/, "");
-  }
-}
-
-function normalizeProviderName(value?: string | null) {
-  return (value || "").trim().replace(/\s+/gu, " ").toLowerCase();
-}
-
 function parseTomlStringValue(value: string) {
   const raw = value.trim();
   if (raw.startsWith('"')) {
@@ -558,14 +549,13 @@ function savedProviderApiKey(provider: SavedProvider) {
     || extractTomlProviderApiKey(provider.tomlConfig, providerId || undefined);
 }
 
-function providerIdentityKey(baseUrl?: string | null, apiKey?: string | null, providerName?: string | null) {
-  const normalizedUrl = normalizeProviderBaseUrl(baseUrl);
-  if (!normalizedUrl) return "";
-  const normalizedKey = (apiKey || "").trim();
-  return JSON.stringify([
-    normalizedUrl,
-    normalizedKey ? `key:${normalizedKey}` : `name:${normalizeProviderName(providerName)}`,
-  ]);
+function savedProviderMatchesProfile(provider: SavedProvider, profile: ProviderProfile) {
+  return providerProfilesMatch({
+    baseUrl: provider.baseUrl,
+    providerName: provider.providerName,
+    model: provider.model,
+    apiKey: savedProviderApiKey(provider),
+  }, profile);
 }
 
 function buildProviderTomlPreview(provider: SavedProvider) {
@@ -783,6 +773,8 @@ function App() {
   const [sessionDeleteBusy, setSessionDeleteBusy] = React.useState(false);
   const [sessionDeleteSafetyConfirmed, setSessionDeleteSafetyConfirmed] = React.useState(false);
   const [state, setState] = React.useState<CodexState | null>(null);
+  const [gatewayProcess, setGatewayProcess] = React.useState<GatewayProcessState | null>(null);
+  const [gatewayPort, setGatewayPort] = React.useState(() => Number(localStorage.getItem("codexx.gateway.port") || 8787));
   const [configDir, setConfigDir] = React.useState("");
   const [configDirDraft, setConfigDirDraft] = React.useState("");
   const [loading, setLoading] = React.useState(false);
@@ -798,6 +790,16 @@ function App() {
   const [availableProviderModels, setAvailableProviderModels] = React.useState<ProviderModel[]>([]);
   const [providerModelsLoading, setProviderModelsLoading] = React.useState(false);
   const [actionBusy, setActionBusy] = React.useState<string>("");
+  const [skillsMcpNoteBusy, setSkillsMcpNoteBusy] = React.useState("");
+  const [restartCodexBusy, setRestartCodexBusy] = React.useState(false);
+  React.useEffect(() => {
+    const onPortChange = (event: Event) => {
+      const value = Number((event as CustomEvent<number>).detail);
+      if (Number.isInteger(value) && value > 0 && value <= 65535) setGatewayPort(value);
+    };
+    window.addEventListener("codexx-gateway-port-changed", onPortChange);
+    return () => window.removeEventListener("codexx-gateway-port-changed", onPortChange);
+  }, []);
   const [promptSyncing, setPromptSyncing] = React.useState(false);
   const [promptCatalogReady, setPromptCatalogReady] = React.useState(false);
   const [promptForm, setPromptForm] = React.useState<SavedPrompt>(blankPromptForm);
@@ -820,6 +822,8 @@ function App() {
   const loadingTokensRef = React.useRef(new Set<number>());
   const actionBusyGenerationRef = React.useRef(0);
   const actionBusyTokensRef = React.useRef(new Map<number, string>());
+  const skillsMcpNoteBusyRef = React.useRef("");
+  const restartCodexBusyRef = React.useRef(false);
   const promptModeHelpRef = React.useRef<HTMLDivElement | null>(null);
   const promptRefreshRequestRef = React.useRef(0);
   const refreshRequestRef = React.useRef(0);
@@ -1084,8 +1088,17 @@ function App() {
     if (state?.activeSavedProviderId && savedProviders.some((item) => item.id === state.activeSavedProviderId)) {
       return state.activeSavedProviderId;
     }
-    return liveProviderId !== "custom" ? liveProviderId : "";
-  }, [liveProviderId, savedProviders, state?.activeSavedProviderId, state?.isOfficialProvider]);
+    const fallback = liveProviderId === "custom"
+      ? savedProviders.find((item) => item.id === activeProviderId)
+      : savedProviders.find((item) => item.id === liveProviderId);
+    if (!fallback || !currentProvider) return "";
+    return savedProviderMatchesProfile(fallback, {
+      baseUrl: currentProvider.baseUrl,
+      apiKey: liveProviderApiKey,
+      providerName: currentProvider.name,
+      model: state?.model,
+    }) ? fallback.id : "";
+  }, [activeProviderId, currentProvider, liveProviderApiKey, liveProviderId, savedProviders, state?.activeSavedProviderId, state?.isOfficialProvider, state?.model]);
   const effectiveActiveProviderId = state?.isOfficialProvider ? "" : inferredActiveProviderId;
   const currentInstructionPath = (state?.instructionFile || "").replace(/\\/g, "/");
   const currentInstructionFilename = currentInstructionPath.split("/").pop() || "";
@@ -1104,22 +1117,6 @@ function App() {
       || currentInstructionFilename
       || (lang === "zh" ? "当前提示词" : "Current prompt");
   }, [currentInstructionFilename, instructionTemplates, lang, savedPrompts, state?.instructionTemplateKey]);
-  const canonicalSavedProviders = React.useMemo(() => {
-    const groups = new Map<string, SavedProvider[]>();
-    savedProviders.forEach((provider) => {
-      const identity = providerIdentityKey(provider.baseUrl, savedProviderApiKey(provider), provider.providerName);
-      const key = identity || `id:${provider.id}`;
-      const group = groups.get(key);
-      if (group) group.push(provider);
-      else groups.set(key, [provider]);
-    });
-    return Array.from(groups.values()).map((group) =>
-      group.find((item) => item.id === effectiveActiveProviderId)
-      || group.find((item) => item.id === activeProviderId)
-      || group[0],
-    );
-  }, [activeProviderId, effectiveActiveProviderId, savedProviders]);
-
   const detectedRows = React.useMemo(() => {
     if (state?.isOfficialProvider) return [];
     return (state?.providers || []).filter((p) => p.isCurrent).map((p) => {
@@ -1140,12 +1137,12 @@ function App() {
   }, [liveProviderApiKey, state?.configText, state?.isOfficialProvider, state?.model, state?.providers]);
 
   const localRows = React.useMemo(() => {
-    return canonicalSavedProviders.map((p) => ({
+    return savedProviders.map((p) => ({
       ...p,
       source: "local" as const,
       isCurrent: effectiveActiveProviderId === p.id,
     }));
-  }, [canonicalSavedProviders, effectiveActiveProviderId]);
+  }, [effectiveActiveProviderId, savedProviders]);
 
   const providerRows = React.useMemo(() => {
     const officialRow = {
@@ -1159,42 +1156,36 @@ function App() {
       requiresOpenaiAuth: false,
       isCurrent: Boolean(state?.isOfficialProvider),
     };
-    const seen = new Set<string>();
-    const rows: Array<typeof officialRow | (typeof detectedRows)[number] | (typeof localRows)[number]> = [officialRow];
-    localRows.forEach((row) => {
-      const key = providerIdentityKey(row.baseUrl, savedProviderApiKey(row), row.providerName);
-      if (key) seen.add(key);
-      rows.push(row);
-    });
-    detectedRows.forEach((row) => {
-      if (row.id === "detected-custom" && inferredActiveProviderId) return;
-      const key = providerIdentityKey(row.baseUrl, row.apiKey, row.providerName);
-      if (key && seen.has(key)) return;
-      if (key) seen.add(key);
-      rows.push(row);
-    });
-    return rows;
-  }, [detectedRows, inferredActiveProviderId, localRows, state?.isOfficialProvider, state?.model]);
+    return orderProviderRows(officialRow, detectedRows, localRows);
+  }, [detectedRows, localRows, state?.isOfficialProvider, state?.model]);
 
   const findLocalProviderForRow = React.useCallback((row: ProviderRow) => {
     if (row.source === "official") return undefined;
-    return canonicalSavedProviders.find((item) =>
-      row.source === "local"
-        ? item.id === row.id
-        : providerIdentityKey(item.baseUrl, savedProviderApiKey(item), item.providerName)
-          === providerIdentityKey(row.baseUrl, row.apiKey, row.providerName),
-    );
-  }, [canonicalSavedProviders]);
+    if (row.source === "local") return savedProviders.find((item) => item.id === row.id);
+    const matches = savedProviders.filter((item) => savedProviderMatchesProfile(item, row));
+    return matches.find((item) => item.id === effectiveActiveProviderId)
+      || matches.find((item) => item.id === activeProviderId)
+      || (matches.length === 1 ? matches[0] : undefined);
+  }, [activeProviderId, effectiveActiveProviderId, savedProviders]);
+
+  const providerCopySourceForRow = React.useCallback((row: ProviderRow): SavedProvider | undefined => {
+    const local = findLocalProviderForRow(row);
+    if (local) return local;
+    if (row.source !== "detected") return undefined;
+    return {
+      id: customProviderId(row.providerName || row.baseUrl),
+      providerName: row.providerName,
+      baseUrl: row.baseUrl,
+      model: row.model,
+      apiKey: row.apiKey || "",
+      tomlConfig: state?.configText || "",
+      wireApi: row.wireApi,
+      requiresOpenaiAuth: row.requiresOpenaiAuth,
+    };
+  }, [findLocalProviderForRow, state?.configText]);
 
   const providerPageRows = React.useMemo<ProviderRow[]>(() => providerRows.map((row) => {
-    const local = row.source === "official"
-      ? undefined
-      : canonicalSavedProviders.find((item) =>
-        row.source === "local"
-          ? item.id === row.id
-          : providerIdentityKey(item.baseUrl, savedProviderApiKey(item), item.providerName)
-            === providerIdentityKey(row.baseUrl, row.apiKey, row.providerName),
-      );
+    const local = findLocalProviderForRow(row);
     return {
       id: row.id,
       source: row.source,
@@ -1207,11 +1198,12 @@ function App() {
       isCurrent: row.isCurrent,
       sourceLabel: row.source === "official" ? (lang === "zh" ? "Codex 登录" : "Codex login") : undefined,
       editable: row.source === "official" || Boolean(local) || row.source === "detected",
+      duplicable: Boolean(providerCopySourceForRow(row)),
       deletable: Boolean(local),
       testable: row.source !== "official",
       testingKey: `${row.source}-${row.id}`,
     };
-  }), [canonicalSavedProviders, lang, providerRows]);
+  }), [findLocalProviderForRow, lang, providerCopySourceForRow, providerRows]);
 
   const visibleSessions = React.useMemo(
     () => (sessionStatus?.sessions || []).filter((item) => showInternalSessions || !item.isSubagent),
@@ -1365,6 +1357,28 @@ function App() {
   }, []);
 
   React.useEffect(() => {
+    let cancelled = false;
+    let inFlight = false;
+    const poll = () => {
+      if (cancelled || inFlight) return;
+      inFlight = true;
+      void gatewayCommands.getProcessState(gatewayPort)
+        .then((next) => { if (!cancelled) setGatewayProcess(next); })
+        .catch(() => { if (!cancelled) setGatewayProcess(null); })
+        .finally(() => { inFlight = false; });
+    };
+    const onGatewayStateChanged = () => poll();
+    poll();
+    window.addEventListener("focus", poll);
+    window.addEventListener("codexx-gateway-state-changed", onGatewayStateChanged);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", poll);
+      window.removeEventListener("codexx-gateway-state-changed", onGatewayStateChanged);
+    };
+  }, [gatewayPort]);
+
+  React.useEffect(() => {
     if (!state?.codexDir) return;
     const loadKey = state.codexDir;
     if (aboutLoadKeyRef.current === loadKey) return;
@@ -1427,21 +1441,65 @@ function App() {
       .catch(() => undefined);
   };
 
+  const gatewayControl = React.useCallback((method: "GET" | "POST" | "PUT", path: string, body?: unknown) =>
+    gatewayCommands.request({
+      listenPort: gatewayPort,
+      method,
+      path,
+      body: body ?? null,
+    }), [gatewayPort]);
+  const gatewayVersion = (section: "provider" | "instruction") => {
+    const value = (gatewayProcess?.state as Record<string, unknown> | null | undefined)?.[section];
+    const version = (value as Record<string, unknown> | undefined)?.version;
+    return typeof version === "number" ? version : undefined;
+  };
+  const ensureGatewayStateKnown = () => {
+    if (!gatewayProcess) {
+      throw new Error("GATEWAY_STATE_UNKNOWN: 正在确认网关状态，请稍后重试");
+    }
+    return gatewayProcess;
+  };
+  const directWriteRoute = () => {
+    const current = ensureGatewayStateKnown();
+    if (current.degraded) {
+      throw new Error("GATEWAY_DEGRADED: gateway recovery is required before changing live configuration");
+    }
+    return !gatewayUsesRuntime(current);
+  };
+
   const switchInstructionTemplate = (templateId: string) =>
     call(
-      () => invoke<ActionResult>("enable_instruction_template", { configDir: configDir || null, templateId, injectionMode: promptInjectionMode }),
-      handleActionResult,
+      async () => {
+        if (directWriteRoute()) return invoke<ActionResult>("enable_instruction_template", { configDir: configDir || null, templateId, injectionMode: promptInjectionMode });
+        const detail = await invoke<BuiltinPromptDetail>("get_builtin_prompt_detail", { templateId });
+        await gatewayControl("PUT", "/state/instruction", { enabled: true, template_id: `builtin:${templateId}`, content: detail.content, injection_mode: promptInjectionMode, expected_version: gatewayVersion("instruction") });
+        return null;
+      },
+      (result) => {
+        if (result) handleActionResult(result);
+        else setToast(lang === "zh" ? "提示词已同步到网关，下一条请求生效" : "Prompt synced to gateway; active on the next request");
+      },
     );
 
   const disableInstruction = () =>
     call(
-      () => invoke<ActionResult>("disable_instruction", { configDir: configDir || null, deleteFile: true }),
-      handleActionResult,
+      async () => {
+        if (directWriteRoute()) return invoke<ActionResult>("disable_instruction", { configDir: configDir || null, deleteFile: true });
+        await gatewayControl("PUT", "/state/instruction", { enabled: false, content: "", injection_mode: promptInjectionMode, expected_version: gatewayVersion("instruction") });
+        return null;
+      },
+      (result) => {
+        if (result) handleActionResult(result);
+        else setToast(lang === "zh" ? "网关提示词已禁用" : "Gateway prompt disabled");
+      },
     );
 
   const disableExternalInstruction = () =>
     call(
-      () => invoke<ActionResult>("disable_external_instruction", { configDir: configDir || null }),
+      () => {
+        if (directWriteRoute()) return invoke<ActionResult>("disable_external_instruction", { configDir: configDir || null });
+        return gatewayControl("PUT", "/state/instruction", { enabled: false, content: "", injection_mode: promptInjectionMode, expected_version: gatewayVersion("instruction") }) as Promise<ActionResult>;
+      },
       handleActionResult,
     );
 
@@ -1527,7 +1585,19 @@ function App() {
   };
 
   const enableSavedPrompt = (id: string) =>
-    call(() => invoke<ActionResult>("enable_saved_prompt", { configDir: configDir || null, id, injectionMode: promptInjectionMode }), handleActionResult);
+    call(
+      async () => {
+        if (directWriteRoute()) return invoke<ActionResult>("enable_saved_prompt", { configDir: configDir || null, id, injectionMode: promptInjectionMode });
+        const prompt = savedPrompts.find((item) => item.id === id);
+        if (!prompt) throw new Error("INSTRUCTION_TEMPLATE_NOT_FOUND: 提示词不存在");
+        await gatewayControl("PUT", "/state/instruction", { enabled: true, template_id: `saved:${id}`, content: prompt.content, injection_mode: promptInjectionMode, expected_version: gatewayVersion("instruction") });
+        return null;
+      },
+      (result) => {
+        if (result) handleActionResult(result);
+        else setToast(lang === "zh" ? "提示词已同步到网关，下一条请求生效" : "Prompt synced to gateway; active on the next request");
+      },
+    );
 
   const removeSavedPrompt = (id: string) =>
     call(
@@ -1645,6 +1715,7 @@ function App() {
           configText: tomlConfig,
           apiKey: provider.apiKey || "",
         },
+        providerId: provider.id,
       });
     }
     return invoke<ActionResult>("switch_provider", {
@@ -1684,14 +1755,28 @@ function App() {
         }
         const applyAfterSave = editingDetectedProvider
           || Boolean(editingProviderId && editingProviderId === effectiveActiveProviderId);
-        const applied = applyAfterSave
-          ? await invoke<ActionResult>("save_active_provider", { provider, configDir: configDir || null })
-          : null;
-        if (!applyAfterSave) await invoke<SavedProvider>("save_provider", { provider });
+        let applied: ActionResult | null = null;
+        ensureGatewayStateKnown();
+        if (gatewayProcess?.managedByCodexX && gatewayProcess.running && applyAfterSave) {
+          await gatewayControl("PUT", "/state/provider", {
+            provider_id: provider.id,
+            provider_name: provider.providerName,
+            base_url: provider.baseUrl,
+            model: provider.model,
+            wire_api: provider.wireApi,
+            api_key: provider.apiKey || undefined,
+            expected_version: gatewayVersion("provider"),
+          });
+          await invoke<SavedProvider>("save_provider", { provider });
+        } else if (applyAfterSave) {
+          applied = await invoke<ActionResult>("save_active_provider", { provider, configDir: configDir || null });
+        } else {
+          await invoke<SavedProvider>("save_provider", { provider });
+        }
         const providerList = await invoke<SavedProvider[]>("list_saved_providers");
-        return { applied, providerList };
+        return { applied, providerList, gatewayApplied: Boolean(gatewayProcess?.managedByCodexX && gatewayProcess.running && applyAfterSave) };
       },
-      ({ applied, providerList }) => {
+      ({ applied, providerList, gatewayApplied }) => {
         if (applied) handleActionResult(applied);
         setSavedProviders(providerList);
         setProviderMode("list");
@@ -1700,18 +1785,36 @@ function App() {
         setProviderTomlDirty(false);
         setToast(applied
           ? (lang === "zh" ? "供应商配置已保存并热更新" : "Provider saved and hot-applied")
-          : (lang === "zh" ? "供应商配置已保存" : "Provider saved"));
+          : gatewayApplied
+            ? (lang === "zh" ? "供应商配置已同步到网关" : "Provider synced to gateway")
+            : (lang === "zh" ? "供应商配置已保存" : "Provider saved"));
       },
     );
   };
 
   const switchProvider = (provider: SavedProvider) =>
     call(
-      () => applyProviderConfig(provider),
-      (result) => {
+      async () => {
+        if (directWriteRoute()) return { result: await applyProviderConfig(provider), gateway: false };
+        await gatewayControl("PUT", "/state/provider", {
+          provider_id: provider.id,
+          provider_name: provider.providerName,
+          base_url: provider.baseUrl,
+          model: provider.model,
+          wire_api: provider.wireApi,
+          api_key: provider.apiKey || undefined,
+          expected_version: gatewayVersion("provider"),
+        });
+        await invoke<SavedProvider>("save_provider", { provider });
+        return { result: null, gateway: true };
+      },
+      ({ result, gateway }) => {
         localStorage.setItem(ACTIVE_PROVIDER_KEY, provider.id);
         setActiveProviderId(provider.id);
-        handleActionResult(result);
+        if (result) handleActionResult(result);
+        else setToast(gateway
+          ? (lang === "zh" ? "供应商已同步到网关，下一条请求生效" : "Provider synced to gateway; active on the next request")
+          : (lang === "zh" ? "供应商已切换" : "Provider switched"));
       },
     );
 
@@ -1777,21 +1880,44 @@ function App() {
 
   const switchOfficialProvider = () =>
     call(
-      () => invoke<ActionResult>("switch_official_provider", { configDir: configDir || null }),
+      async () => {
+        if (directWriteRoute()) return { result: await invoke<ActionResult>("switch_official_provider", { configDir: configDir || null }), gateway: false };
+        await gatewayControl("PUT", "/state/provider", {
+          provider_id: "openai-official",
+          provider_name: "OpenAI Official",
+          base_url: "https://chatgpt.com/codex",
+          model: state?.model || "gpt-5.5",
+          wire_api: "responses",
+          expected_version: gatewayVersion("provider"),
+        });
+        return { result: null, gateway: true };
+      },
       (result) => {
         localStorage.removeItem(ACTIVE_PROVIDER_KEY);
         setActiveProviderId("");
-        handleActionResult(result);
+        if (result.result) handleActionResult(result.result);
+        else setToast(lang === "zh" ? "官方供应商已同步到网关" : "Official provider synced to gateway");
       },
     );
 
   const restoreOfficialProvider = () =>
     call(
       async () => {
-        const result = await invoke<ActionResult>("restore_official_provider", { configDir: configDir || null });
         const draft = await invoke<OfficialConfigDraft | null>("get_official_config_draft", {
           configDir: configDir || null,
         });
+        if (!directWriteRoute()) {
+          await gatewayControl("PUT", "/state/provider", {
+            provider_id: "openai-official",
+            provider_name: "OpenAI Official",
+            base_url: "https://chatgpt.com/codex",
+            model: draft?.model || state?.model || "gpt-5.5",
+            wire_api: "responses",
+            expected_version: gatewayVersion("provider"),
+          });
+          return { result: null, draft };
+        }
+        const result = await invoke<ActionResult>("restore_official_provider", { configDir: configDir || null });
         return { result, draft };
       },
       ({ result, draft }) => {
@@ -1802,8 +1928,9 @@ function App() {
             configText: draft.configText || buildOfficialTomlPreview(draft.model || "gpt-5.5"),
           });
         }
-        handleActionResult(result);
-        setToast(lang === "zh" ? "已读取保存的官方配置" : "Saved official config loaded");
+        if (result) handleActionResult(result);
+        setToast(result ? `Saved official config loaded` : `Official provider synced to gateway`);
+
       },
     );
 
@@ -1835,15 +1962,34 @@ function App() {
 
   const resetOfficialProvider = () =>
     call(
-      () => invoke<ActionResult>("reset_official_provider", {
-        input: {
-          configDir: configDir || null,
-          model: officialForm.model,
-          authJson: null,
-          configText: officialForm.configText,
-        },
-      }),
+      async () => {
+        if (!directWriteRoute()) {
+          await gatewayControl("PUT", "/state/provider", {
+            provider_id: "openai-official",
+            provider_name: "OpenAI Official",
+            base_url: "https://chatgpt.com/codex",
+            model: officialForm.model || state?.model || "gpt-5.5",
+            wire_api: "responses",
+            expected_version: gatewayVersion("provider"),
+          });
+          return null;
+        }
+        return invoke<ActionResult>("reset_official_provider", {
+          input: {
+            configDir: configDir || null,
+            model: officialForm.model,
+            authJson: null,
+            configText: officialForm.configText,
+          },
+        });
+      },
       (result) => {
+        if (!result) {
+          localStorage.removeItem(ACTIVE_PROVIDER_KEY);
+          setActiveProviderId("");
+          setToast(lang === "zh" ? "瀹樻柟渚涘簲鍟嗗凡鍚屾鍒扮綉鍏?" : "Official provider synced to gateway");
+          return;
+        }
         localStorage.removeItem(ACTIVE_PROVIDER_KEY);
         setActiveProviderId("");
         setOfficialForm({
@@ -2113,6 +2259,60 @@ function App() {
     }
   };
 
+  const saveSkillsMcpNote = async (itemKind: SkillsMcpNoteKind, id: string, note: string) => {
+    if (skillsMcpNoteBusyRef.current) return false;
+    const noteBusyKey = `note:${itemKind}:${id}`;
+    skillsMcpNoteBusyRef.current = noteBusyKey;
+    setSkillsMcpNoteBusy(noteBusyKey);
+    const request = beginSkillsMcpRequest();
+    const actionToken = beginActionBusy(noteBusyKey);
+    setError("");
+    try {
+      const result = await invoke<SkillsMcpState>("save_skills_mcp_note", {
+        configDir: request.configDir,
+        itemKind,
+        id,
+        note,
+      });
+      if (!isCurrentSkillsMcpRequest(request.requestId, request.configDirKey)) return false;
+      skillsMcpLoadedRef.current = request.configDirKey;
+      setSkillsMcpState(result);
+      setToast(lang === "zh" ? "备注已保存" : "Note saved");
+      return true;
+    } catch (e) {
+      if (isCurrentSkillsMcpRequest(request.requestId, request.configDirKey)) setError(String(e));
+      return false;
+    } finally {
+      endActionBusy(actionToken);
+      if (skillsMcpNoteBusyRef.current === noteBusyKey) {
+        skillsMcpNoteBusyRef.current = "";
+        setSkillsMcpNoteBusy("");
+      }
+    }
+  };
+
+  const restartCodexDesktop = async () => {
+    if (restartCodexBusyRef.current) return false;
+    restartCodexBusyRef.current = true;
+    setRestartCodexBusy(true);
+    const actionToken = beginActionBusy("restartCodexDesktop");
+    setError("");
+    try {
+      const result = await invoke<CodexDesktopRestartResult>("restart_codex_desktop");
+      setToast(result.wasRunning
+        ? (lang === "zh" ? `${result.appName} 已重新启动` : `${result.appName} restarted`)
+        : (lang === "zh" ? `${result.appName} 已启动` : `${result.appName} started`));
+      return true;
+    } catch (e) {
+      setError(String(e));
+      return false;
+    } finally {
+      endActionBusy(actionToken);
+      restartCodexBusyRef.current = false;
+      setRestartCodexBusy(false);
+    }
+  };
+
   const installSkillZipFile = async (file?: File | null) => {
     if (!file) return;
     if (!file.name.toLowerCase().endsWith(".zip")) {
@@ -2181,18 +2381,32 @@ function App() {
 
   const saveOfficialConfig = () =>
     call(
-      () =>
-        invoke<ActionResult>("save_official_config", {
+      async () => {
+        if (!directWriteRoute()) {
+          await gatewayControl("PUT", "/state/provider", {
+            provider_id: "openai-official",
+            provider_name: "OpenAI Official",
+            base_url: "https://chatgpt.com/codex",
+            model: officialForm.model || state?.model || "gpt-5.5",
+            wire_api: "responses",
+            api_key: extractOpenAiApiKey(officialForm.authJson) || undefined,
+            expected_version: gatewayVersion("provider"),
+          });
+          return null;
+        }
+        return invoke<ActionResult>("save_official_config", {
           input: {
             configDir: configDir || null,
             model: officialForm.model,
             authJson: officialForm.authJson,
             configText: officialForm.configText,
           },
-        }),
+        });
+      },
       (result) => {
-        handleActionResult(result);
+        if (result) handleActionResult(result);
         setProviderMode("list");
+        if (!result) setToast(lang === "zh" ? "瀹樻柟渚涘簲鍟嗗凡鍚屾鍒扮綉鍏?" : "Official provider synced to gateway");
       },
     );
 
@@ -2220,6 +2434,20 @@ function App() {
     setEditingDetectedProvider(false);
     setProviderForm(provider);
     setProviderTomlDraft(provider.tomlConfig?.trim() || buildProviderTomlPreview(provider));
+    setProviderTomlDirty(false);
+    setProviderMode("form");
+  };
+
+  const openDuplicateProvider = (provider: SavedProvider) => {
+    resetAvailableProviderModels();
+    const duplicate = {
+      ...provider,
+      id: uniqueId(provider.id || provider.providerName, savedProviders.map((item) => item.id)),
+    };
+    setEditingProviderId(null);
+    setEditingDetectedProvider(false);
+    setProviderForm(duplicate);
+    setProviderTomlDraft(duplicate.tomlConfig?.trim() || buildProviderTomlPreview(duplicate));
     setProviderTomlDirty(false);
     setProviderMode("form");
   };
@@ -2253,10 +2481,22 @@ function App() {
     setError("");
     try {
       if (isCurrent) {
-        const result = await invoke<ActionResult>("switch_official_provider", { configDir: configDir || null });
+        let result: ActionResult | null = null;
+        if (!directWriteRoute()) {
+          await gatewayControl("PUT", "/state/provider", {
+            provider_id: "openai-official",
+            provider_name: "OpenAI Official",
+            base_url: "https://chatgpt.com/codex",
+            model: state?.model || "gpt-5.5",
+            wire_api: "responses",
+            expected_version: gatewayVersion("provider"),
+          });
+        } else {
+          result = await invoke<ActionResult>("switch_official_provider", { configDir: configDir || null });
+        }
         localStorage.removeItem(ACTIVE_PROVIDER_KEY);
         setActiveProviderId("");
-        setState(result.state);
+        if (result) setState(result.state);
       }
       await invoke<void>("delete_saved_provider", { id, configDir: configDir || null });
       const providerList = await invoke<SavedProvider[]>("list_saved_providers");
@@ -2431,7 +2671,10 @@ function App() {
       contentClassName={cx(
         tab === "sessions" && "cx-app-content--sessions",
         (
-          (tab === "provider" && providerMode === "list")
+        (tab === "provider" && providerMode === "list")
+          || tab === "gateway"
+          || tab === "gatewayObserve"
+          || tab === "gatewayScripts"
           || tab === "skillsMcp"
         ) && "cx-app-content--fixed",
         skillsMcpImportOpen && Boolean(skillsMcpImportPreview) && "cx-app-content--modal-locked",
@@ -2478,9 +2721,16 @@ function App() {
       />
 
       <PageTransition pageKey={tab}>
-            {!state && tab !== "dashboard" && tab !== "settings" && tab !== "about" && (
-              <CodexStateLoading lang={lang} loading={refreshing} />
-            )}
+            {!state
+              && tab !== "dashboard"
+              && tab !== "settings"
+              && tab !== "about"
+              && tab !== "gateway"
+              && tab !== "gatewayObserve"
+              && tab !== "gatewayScripts"
+              && (
+                <CodexStateLoading lang={lang} loading={refreshing} />
+              )}
 
             {tab === "dashboard" && (
               <OverviewPage
@@ -2508,6 +2758,20 @@ function App() {
                 onRefresh={() => refresh(false)}
                 onOpenUpdate={() => setUpdatePromptOpen(true)}
               />
+            )}
+
+            {(tab === "gateway" || visitedTabs.has("gateway")) && (
+              <GatewayPage
+                active={tab === "gateway"}
+                lang={lang}
+                configDir={configDir || undefined}
+              />
+            )}
+            {(tab === "gatewayObserve" || visitedTabs.has("gatewayObserve")) && (
+              <GatewayObservePage active={tab === "gatewayObserve"} lang={lang} />
+            )}
+            {(tab === "gatewayScripts" || visitedTabs.has("gatewayScripts")) && (
+              <GatewayScriptsPage active={tab === "gatewayScripts"} lang={lang} />
             )}
 
             {state && tab === "provider" && (
@@ -2574,6 +2838,10 @@ function App() {
                   const local = findLocalProviderForRow(row);
                   if (local) openEditProvider(local);
                   else if (row.source === "detected") openEditDetectedProvider(row);
+                }}
+                onDuplicateProvider={(row) => {
+                  const copySource = providerCopySourceForRow(row);
+                  if (copySource) openDuplicateProvider(copySource);
                 }}
                 onDeleteProvider={(row) => {
                   const local = findLocalProviderForRow(row);
@@ -2697,6 +2965,8 @@ function App() {
                 onCheckUpdates={checkSkillUpdatesAction}
                 onToggleSkill={toggleSkillEnabled}
                 onToggleMcp={toggleMcpEnabled}
+                noteBusyKey={skillsMcpNoteBusy}
+                onSaveNote={saveSkillsMcpNote}
               />
             )}
 
@@ -2846,9 +3116,24 @@ function App() {
                     ? "重新检测 CODEX_HOME、config.toml、auth.json 和 SQLite 会话库。"
                     : "Recheck CODEX_HOME, config.toml, auth.json and SQLite session stores.",
                   recheckLabel: lang === "zh" ? "重新检测" : "Recheck",
+                  restartTitle: lang === "zh" ? "Codex 桌面客户端" : "Codex desktop app",
+                  restartDescription: lang === "zh"
+                    ? "重新启动本机的 Codex（ChatGPT）桌面客户端，不会重启 Codex-X。"
+                    : "Restart the local Codex (ChatGPT) desktop app without restarting Codex-X.",
+                  restartLabel: lang === "zh" ? "重启 Codex" : "Restart Codex",
+                  restartTargetLabel: lang === "zh" ? "Codex（ChatGPT）桌面客户端" : "Codex (ChatGPT) desktop app",
+                  restartConfirmTitle: lang === "zh" ? "重启 Codex？" : "Restart Codex?",
+                  restartConfirmDescription: lang === "zh"
+                    ? "正在运行的 Codex 窗口会关闭并重新打开，未保存的输入可能丢失。"
+                    : "The running Codex window will close and reopen. Unsaved input may be lost.",
+                  restartCancelLabel: lang === "zh" ? "取消" : "Cancel",
+                  restartConfirmLabel: lang === "zh" ? "确认重启" : "Restart",
+                  restartingLabel: lang === "zh" ? "正在重启" : "Restarting",
                 }}
                 onLanguageChange={setLang}
                 recheckBusy={loading || refreshing}
+                restartBusy={restartCodexBusy}
+                onRestartCodex={restartCodexDesktop}
                 onRecheck={() => {
                   localStorage.removeItem(STARTUP_WIZARD_SEEN_KEY);
                   setStartupWizardOpen(true);

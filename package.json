@@ -1,13 +1,15 @@
 {
   "name": "codex-x-workspace",
   "private": true,
-  "version": "0.3.12",
+  "version": "0.3.15",
   "scripts": {
     "dev": "pnpm --dir apps/desktop tauri dev",
     "build": "pnpm --dir apps/desktop tauri build",
     "desktop:dev": "pnpm --dir apps/desktop tauri dev",
     "desktop:build": "pnpm --dir apps/desktop tauri build",
-    "typecheck": "pnpm --dir apps/desktop typecheck"
+    "typecheck": "pnpm --dir apps/desktop typecheck",
+    "test:desktop": "pnpm --dir apps/desktop test",
+    "test:gateway": "pnpm --dir apps/desktop test:gateway"
   },
   "author": "yynxxxxx"
 }

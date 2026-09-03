@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
+  Copy,
   Download,
   Eye,
   EyeOff,
@@ -37,6 +38,7 @@ export type ProviderRow = {
   isCurrent: boolean;
   sourceLabel?: string;
   editable?: boolean;
+  duplicable?: boolean;
   deletable?: boolean;
   testable?: boolean;
   testingKey?: string;
@@ -69,6 +71,7 @@ export type ProviderCopy = {
   enableLabel: string;
   testLabel: string;
   editLabel: string;
+  duplicateLabel: string;
   removeLabel: string;
   deleteTitle: string;
   deleteDescription: (providerName: string) => string;
@@ -154,6 +157,7 @@ export type ProvidersPageProps = {
   onEnableProvider: (row: ProviderRow) => void;
   onTestProvider: (row: ProviderRow) => void;
   onEditProvider: (row: ProviderRow) => void;
+  onDuplicateProvider: (row: ProviderRow) => void;
   onDeleteProvider: (row: ProviderRow) => Promise<boolean>;
   onCancelMode: () => void;
   onOfficialModelChange: (value: string) => void;
@@ -242,8 +246,9 @@ function ListPage({
   onEnableProvider,
   onTestProvider,
   onEditProvider,
+  onDuplicateProvider,
   onDeleteProvider,
-}: Pick<ProvidersPageProps, "copy" | "providerRows" | "loading" | "testingId" | "actionBusy" | "onImportCcSwitch" | "onAddProvider" | "onRestoreOfficial" | "onEnableProvider" | "onTestProvider" | "onEditProvider" | "onDeleteProvider">) {
+}: Pick<ProvidersPageProps, "copy" | "providerRows" | "loading" | "testingId" | "actionBusy" | "onImportCcSwitch" | "onAddProvider" | "onRestoreOfficial" | "onEnableProvider" | "onTestProvider" | "onEditProvider" | "onDuplicateProvider" | "onDeleteProvider">) {
   const [providerToDelete, setProviderToDelete] = useState<ProviderRow | null>(null);
   const [deleting, setDeleting] = useState(false);
   const providerActionsBusy = loading || Boolean(actionBusy);
@@ -336,6 +341,9 @@ function ListPage({
                 )}
                 {row.editable !== false && (
                   <ActionIconButton icon={PencilLine} label={copy.editLabel} onClick={() => onEditProvider(row)} disabled={providerActionsBusy} />
+                )}
+                {row.duplicable && (
+                  <ActionIconButton icon={Copy} label={copy.duplicateLabel} onClick={() => onDuplicateProvider(row)} disabled={providerActionsBusy} />
                 )}
                 {row.deletable && (
                   <ActionIconButton icon={Trash2} label={copy.removeLabel} onClick={() => setProviderToDelete(row)} disabled={providerActionsBusy} danger />

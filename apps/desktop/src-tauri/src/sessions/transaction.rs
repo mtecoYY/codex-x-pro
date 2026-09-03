@@ -177,54 +177,73 @@ fn apply_sqlite_updates(
     rollouts: &RolloutScan,
     target_provider: &str,
     catalog_sources: &HashMap<String, CatalogRepairThread>,
+    syncable_thread_ids: &HashSet<String>,
 ) -> Result<()> {
+    let mut sorted_thread_ids = syncable_thread_ids.iter().collect::<Vec<_>>();
+    sorted_thread_ids.sort();
     for update in pending.iter_mut() {
         if update.thread_columns.contains("id") && update.thread_columns.contains("model_provider")
         {
-            update
-                .conn
-                .execute(
-                    "INSERT INTO temp.codexx_session_rollback
+            let archived_filter = if update.thread_columns.contains("archived") {
+                " AND COALESCE(archived, 0) = 0"
+            } else {
+                ""
+            };
+            let snapshot_sql = format!(
+                "INSERT INTO temp.codexx_session_rollback
                         (id, model_provider, provider_changed)
                      SELECT id, model_provider, 1 FROM threads
-                     WHERE COALESCE(model_provider, '') <> ?1
+                     WHERE id = ?2 AND COALESCE(model_provider, '') <> ?1{archived_filter}
                      ON CONFLICT(id) DO UPDATE SET
                         model_provider = excluded.model_provider,
-                        provider_changed = 1",
-                    [target_provider],
-                )
-                .map_err(|error| CodexxError::Database(error.to_string()))?;
-            update.counts.provider_rows += update
-                .conn
-                .execute(
-                    "UPDATE threads SET model_provider = ?1 \
-                     WHERE COALESCE(model_provider, '') <> ?1",
-                    [target_provider],
-                )
-                .map_err(|error| CodexxError::Database(error.to_string()))?;
+                        provider_changed = 1"
+            );
+            let update_sql = format!(
+                "UPDATE threads SET model_provider = ?1 \
+                 WHERE id = ?2 AND COALESCE(model_provider, '') <> ?1{archived_filter}"
+            );
+            for thread_id in &sorted_thread_ids {
+                update
+                    .conn
+                    .execute(&snapshot_sql, (target_provider, thread_id))
+                    .map_err(|error| CodexxError::Database(error.to_string()))?;
+                update.counts.provider_rows += update
+                    .conn
+                    .execute(&update_sql, (target_provider, thread_id))
+                    .map_err(|error| CodexxError::Database(error.to_string()))?;
+            }
         }
 
         if update.thread_columns.contains("id") && update.thread_columns.contains("cwd") {
+            let archived_filter = if update.thread_columns.contains("archived") {
+                " AND COALESCE(archived, 0) = 0"
+            } else {
+                ""
+            };
+            let snapshot_sql = format!(
+                "INSERT INTO temp.codexx_session_rollback
+                    (id, cwd, cwd_changed)
+                 SELECT id, cwd, 1 FROM threads
+                 WHERE id = ?2 AND COALESCE(cwd, '') <> ?1{archived_filter}
+                 ON CONFLICT(id) DO UPDATE SET
+                    cwd = excluded.cwd,
+                    cwd_changed = 1"
+            );
+            let update_sql = format!(
+                "UPDATE threads SET cwd = ?1 \
+                 WHERE id = ?2 AND COALESCE(cwd, '') <> ?1{archived_filter}"
+            );
             for (thread_id, cwd) in &rollouts.cwd_by_thread_id {
+                if !syncable_thread_ids.contains(thread_id) {
+                    continue;
+                }
                 update
                     .conn
-                    .execute(
-                        "INSERT INTO temp.codexx_session_rollback
-                            (id, cwd, cwd_changed)
-                         SELECT id, cwd, 1 FROM threads
-                         WHERE id = ?2 AND COALESCE(cwd, '') <> ?1
-                         ON CONFLICT(id) DO UPDATE SET
-                            cwd = excluded.cwd,
-                            cwd_changed = 1",
-                        (cwd, thread_id),
-                    )
+                    .execute(&snapshot_sql, (cwd, thread_id))
                     .map_err(|error| CodexxError::Database(error.to_string()))?;
                 update.counts.cwd_rows += update
                     .conn
-                    .execute(
-                        "UPDATE threads SET cwd = ?1 WHERE id = ?2 AND COALESCE(cwd, '') <> ?1",
-                        (cwd, thread_id),
-                    )
+                    .execute(&update_sql, (cwd, thread_id))
                     .map_err(|error| CodexxError::Database(error.to_string()))?;
             }
         }
@@ -233,6 +252,7 @@ fn apply_sqlite_updates(
             &update.catalog_columns,
             target_provider,
             catalog_sources,
+            syncable_thread_ids,
         )?;
         update.counts.provider_rows += catalog_counts.provider_rows;
         update.counts.catalog_insert_rows += catalog_counts.inserted_rows;
@@ -381,6 +401,7 @@ pub(super) fn mutation_error(original: CodexxError, recovery_errors: Vec<String>
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum MutationPoint {
+    BeforeSqliteLock,
     AfterSqliteCommit(usize),
 }
 
@@ -395,6 +416,7 @@ pub(super) fn execute_provider_sync_mutation<F>(
     pending_sqlite: &mut [PendingSqliteUpdate],
     target_provider: &str,
     catalog_sources: &HashMap<String, CatalogRepairThread>,
+    syncable_thread_ids: &HashSet<String>,
     journal: &mut MutationJournal,
     hook: &mut F,
 ) -> Result<MutationResult>
@@ -404,7 +426,13 @@ where
     let result = (|| -> Result<MutationResult> {
         let (applied_rollouts, skipped_rollouts) = apply_session_changes(&rollouts.changes)?;
         journal.applied_rollouts = applied_rollouts;
-        apply_sqlite_updates(pending_sqlite, rollouts, target_provider, catalog_sources)?;
+        apply_sqlite_updates(
+            pending_sqlite,
+            rollouts,
+            target_provider,
+            catalog_sources,
+            syncable_thread_ids,
+        )?;
         let sqlite_updates = commit_sqlite_updates(pending_sqlite, journal, hook)?;
         Ok(MutationResult {
             applied_rollouts: journal.applied_rollouts.len(),

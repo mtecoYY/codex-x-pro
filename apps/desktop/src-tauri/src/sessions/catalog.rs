@@ -84,6 +84,7 @@ fn timestamp_expr(columns: &HashSet<String>, ms_column: &str, seconds_column: &s
 fn collect_catalog_repair_threads(
     paths: &[PathBuf],
     target_provider: &str,
+    syncable_thread_ids: &HashSet<String>,
 ) -> Result<HashMap<String, CatalogRepairThread>> {
     let mut threads = HashMap::new();
     for path in paths {
@@ -117,10 +118,15 @@ fn collect_catalog_repair_threads(
         let source_detail = text_expr(&columns, "rollout_path", "''");
         let git_branch = text_expr(&columns, "git_branch", "NULL");
         let thread_source = text_expr(&columns, "thread_source", "NULL");
+        let archived_filter = if columns.contains("archived") {
+            " AND COALESCE(archived, 0) = 0"
+        } else {
+            ""
+        };
         let sql = format!(
             "SELECT id, {display_title}, {source_created_at}, {source_updated_at}, \
              {source_recency_at}, {cwd}, {source_kind}, {source_detail}, {git_branch}, \
-             {thread_source} FROM threads WHERE COALESCE(id, '') <> ''"
+             {thread_source} FROM threads WHERE COALESCE(id, '') <> ''{archived_filter}"
         );
         let mut statement = conn.prepare(&sql).map_err(database_error)?;
         let rows = statement
@@ -144,6 +150,9 @@ fn collect_catalog_repair_threads(
             .map_err(database_error)?;
         for row in rows {
             let thread = row.map_err(database_error)?;
+            if !syncable_thread_ids.contains(&thread.id) {
+                continue;
+            }
             let replace = threads
                 .get(&thread.id)
                 .map(|current: &CatalogRepairThread| {
@@ -227,8 +236,10 @@ pub(super) fn scan_catalog_sync(
     thread_paths: &[PathBuf],
     catalog_paths: &[PathBuf],
     target_provider: &str,
+    syncable_thread_ids: &HashSet<String>,
 ) -> Result<CatalogSyncScan> {
-    let sources = collect_catalog_repair_threads(thread_paths, target_provider)?;
+    let sources =
+        collect_catalog_repair_threads(thread_paths, target_provider, syncable_thread_ids)?;
     let mut scan = CatalogSyncScan {
         sources,
         ..CatalogSyncScan::default()
@@ -255,8 +266,8 @@ pub(super) fn scan_catalog_sync(
                 .map_err(database_error)?;
             for row in rows {
                 let id = row.map_err(database_error)?;
-                scan.mismatched_rows += 1;
-                if !id.trim().is_empty() {
+                if syncable_thread_ids.contains(&id) {
+                    scan.mismatched_rows += 1;
                     scan.mismatched_thread_ids.insert(id);
                 }
             }
@@ -546,6 +557,7 @@ fn snapshot_catalog_provider_changes(
     conn: &Connection,
     columns: &HashSet<String>,
     target_provider: &str,
+    provider_thread_ids: &HashSet<String>,
 ) -> Result<()> {
     if !columns.contains("model_provider") || !columns.contains("thread_id") {
         return Ok(());
@@ -564,10 +576,13 @@ fn snapshot_catalog_provider_changes(
         "INSERT INTO temp.codexx_catalog_provider_rollback \
             (host_id, thread_id, model_provider, missing_candidate) \
          SELECT {host_expr}, thread_id, model_provider, {missing_expr} \
-         FROM local_thread_catalog WHERE COALESCE(model_provider, '') <> ?1"
+         FROM local_thread_catalog WHERE COALESCE(model_provider, '') <> ?1 \
+           AND thread_id = ?2"
     );
-    conn.execute(&sql, [target_provider])
-        .map_err(database_error)?;
+    for thread_id in provider_thread_ids {
+        conn.execute(&sql, (target_provider, thread_id))
+            .map_err(database_error)?;
+    }
     Ok(())
 }
 
@@ -663,6 +678,7 @@ pub(super) fn apply_catalog_updates(
     columns: &HashSet<String>,
     target_provider: &str,
     sources: &HashMap<String, CatalogRepairThread>,
+    provider_thread_ids: &HashSet<String>,
 ) -> Result<CatalogUpdateCounts> {
     let mut counts = CatalogUpdateCounts::default();
     let repair_host = if !sources.is_empty() && catalog_supports_repair(columns) {
@@ -670,17 +686,19 @@ pub(super) fn apply_catalog_updates(
     } else {
         None
     };
-    snapshot_catalog_provider_changes(conn, columns, target_provider)?;
+    snapshot_catalog_provider_changes(conn, columns, target_provider, provider_thread_ids)?;
     if let Some(host_id) = repair_host.as_deref() {
         snapshot_hidden_catalog_sources(conn, columns, host_id, sources)?;
     }
     if columns.contains("model_provider") && columns.contains("thread_id") {
-        conn.execute(
-            "UPDATE local_thread_catalog SET model_provider = ?1 \
-             WHERE COALESCE(model_provider, '') <> ?1",
-            [target_provider],
-        )
-        .map_err(database_error)?;
+        for thread_id in provider_thread_ids {
+            conn.execute(
+                "UPDATE local_thread_catalog SET model_provider = ?1 \
+                 WHERE thread_id = ?2 AND COALESCE(model_provider, '') <> ?1",
+                (target_provider, thread_id),
+            )
+            .map_err(database_error)?;
+        }
     }
     if let Some(host_id) = repair_host.as_deref() {
         reactivate_catalog_sources(conn, columns, host_id, sources)?;
@@ -939,13 +957,20 @@ mod tests {
         conn: &Connection,
         target_provider: &str,
         sources: &HashMap<String, CatalogRepairThread>,
+        provider_thread_ids: &HashSet<String>,
     ) -> CatalogUpdateCounts {
         conn.execute_batch("BEGIN IMMEDIATE")
             .expect("begin catalog update");
         create_catalog_rollback_tables(conn).expect("create rollback tables");
         let columns = catalog_columns(conn).expect("read catalog columns");
-        let counts = apply_catalog_updates(conn, &columns, target_provider, sources)
-            .expect("apply catalog update");
+        let counts = apply_catalog_updates(
+            conn,
+            &columns,
+            target_provider,
+            sources,
+            provider_thread_ids,
+        )
+        .expect("apply catalog update");
         conn.execute_batch("COMMIT").expect("commit catalog update");
         counts
     }
@@ -983,10 +1008,12 @@ mod tests {
         insert_catalog_row(&catalog, "thread-hidden", "custom", 1);
         drop(catalog);
 
+        let syncable_thread_ids = HashSet::from(["thread-hidden".to_string()]);
         let scan = scan_catalog_sync(
             &[thread_path],
             std::slice::from_ref(&catalog_path),
             "custom",
+            &syncable_thread_ids,
         )
         .expect("scan hidden catalog row");
         assert_eq!(scan.mismatched_rows, 0);
@@ -994,7 +1021,7 @@ mod tests {
         assert!(scan.mismatched_thread_ids.contains("thread-hidden"));
 
         let catalog = Connection::open(&catalog_path).expect("open catalog for update");
-        let counts = apply_and_commit(&catalog, "custom", &scan.sources);
+        let counts = apply_and_commit(&catalog, "custom", &scan.sources, &syncable_thread_ids);
         assert_eq!(counts.provider_rows, 1);
         assert_eq!(counts.inserted_rows, 0);
         assert_eq!(
@@ -1016,8 +1043,9 @@ mod tests {
         let conn = Connection::open_in_memory().expect("open in-memory catalog");
         create_catalog_schema(&conn);
         insert_catalog_row(&conn, "thread-provider", "openai", 0);
+        let provider_thread_ids = HashSet::from(["thread-provider".to_string()]);
 
-        let counts = apply_and_commit(&conn, "custom", &HashMap::new());
+        let counts = apply_and_commit(&conn, "custom", &HashMap::new(), &provider_thread_ids);
         assert_eq!(counts.provider_rows, 1);
         assert_eq!(counts.inserted_rows, 0);
         assert_eq!(
@@ -1070,8 +1098,9 @@ mod tests {
             "thread-combined".to_string(),
             repair_source("thread-combined", "custom"),
         )]);
+        let provider_thread_ids = HashSet::from(["thread-combined".to_string()]);
 
-        let counts = apply_and_commit(&conn, "custom", &sources);
+        let counts = apply_and_commit(&conn, "custom", &sources, &provider_thread_ids);
         assert_eq!(counts.provider_rows, 1);
         assert_eq!(counts.inserted_rows, 0);
         assert_eq!(

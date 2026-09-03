@@ -328,10 +328,13 @@
   min-width: 0;
   display: flex;
   align-items: center;
+  flex-wrap: nowrap;
   gap: 9px;
 }
 
 .cx-skills-row-copy > strong {
+  min-width: 0;
+  flex: 0 1 auto;
   display: block;
   overflow: hidden;
   color: #2a2e34;
@@ -343,12 +346,36 @@
   white-space: nowrap;
 }
 
+.cx-skills-row-copy--noted > strong {
+  max-width: min(40%, 360px);
+  flex: 0 1 auto;
+}
+
+.cx-skills-row-note {
+  min-width: 0;
+  flex: 1 1 180px;
+  overflow: hidden;
+  color: var(--cx-tool-muted);
+  font-size: 13px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .cx-skills-row-copy .ui-status-badge {
   flex: 0 0 auto;
+  max-width: min(30%, 220px);
+  overflow: hidden;
   min-height: 20px;
   padding: 0 6px;
   border-radius: 5px;
   font-size: 11px;
+}
+
+.cx-skills-row-copy .ui-status-badge > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .cx-skills-row-control,
@@ -358,6 +385,67 @@
   align-items: center;
   justify-content: flex-end;
   gap: 9px;
+}
+
+.cx-skills-note-button {
+  flex: 0 0 auto;
+}
+
+.cx-skills-note-modal .ui-modal__body {
+  display: grid;
+  gap: 8px;
+}
+
+.cx-skills-note-field {
+  display: grid;
+  gap: 8px;
+}
+
+.cx-skills-note-field > span {
+  color: #3e434b;
+  font-size: 12px;
+  font-weight: 680;
+}
+
+.cx-skills-note-field textarea {
+  width: 100%;
+  min-height: 118px;
+  resize: vertical;
+  padding: 11px 12px;
+  border: 1px solid #d8dce2;
+  border-radius: 7px;
+  color: #292d33;
+  background: #ffffff;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.cx-skills-note-field textarea:focus {
+  border-color: #8db2f5;
+  outline: 2px solid rgba(37, 99, 235, 0.16);
+  outline-offset: 1px;
+}
+
+.cx-skills-note-field textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.cx-skills-note-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: #858b94;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.cx-skills-note-meta span:last-child {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
 }
 
 .cx-skills-empty {
@@ -1444,12 +1532,37 @@
   }
 
   .cx-skills-row {
-    grid-template-columns: 34px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
   }
 
   .cx-skills-row-control {
     grid-column: 2;
-    justify-content: flex-start;
+    grid-row: 1;
+    justify-content: flex-end;
+  }
+
+  .cx-skills-row-copy {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .cx-skills-row-copy--noted {
+    flex-wrap: wrap;
+  }
+
+  .cx-skills-row-copy--noted > strong {
+    max-width: 100%;
+    flex: 1 1 auto;
+  }
+
+  .cx-skills-row-note {
+    flex-basis: 100%;
+    display: -webkit-box;
+    overflow: hidden;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
   }
 
   .cx-prompts-list {

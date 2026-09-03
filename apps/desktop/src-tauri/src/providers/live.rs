@@ -8,9 +8,10 @@ use super::official_auth::{
 use super::{
     custom_provider_id, delete_provider_inner, experimental_bearer_token_from_doc,
     is_placeholder_provider, list_saved_providers_inner, list_saved_providers_on_connection,
-    matching_saved_provider_ids_for_live, normalize_saved_provider, open_store,
-    provider_template_from_document, reserved_codex_provider_id, rollback_provider_store_inner,
-    save_provider_with_rollback_inner, strip_provider_bearer_tokens,
+    matching_saved_provider_ids_for_live, normalize_saved_provider,
+    normalize_saved_provider_for_save, open_store, provider_template_from_document,
+    reconcile_active_provider_on_connection, reserved_codex_provider_id,
+    rollback_provider_store_inner, save_provider_with_rollback_inner, strip_provider_bearer_tokens,
     unique_saved_provider_id_for_live, ProviderStoreRollback, SavedProvider,
 };
 use crate::backups::create_backup;
@@ -1224,42 +1225,33 @@ fn save_active_provider_with_apply<F>(
 where
     F: FnOnce(&SavedProvider, &Path, Option<Vec<u8>>) -> Result<ActionResult>,
 {
-    let provider = normalize_saved_provider(provider)?;
     let codex_dir = resolve_codex_dir(config_dir)?;
     ensure_directory(&codex_dir)?;
     let _live_lock = acquire_live_config_lock(&codex_dir)?;
     migrate_legacy_prompt_config_locked(&codex_dir)?;
     let active_config = read_file_snapshot(&config_path(&codex_dir))?;
     let conn = open_store()?;
+    let provider = normalize_saved_provider_for_save(&conn, provider)?;
     let saved_before = list_saved_providers_on_connection(&conn)?;
     let live = detected_live_custom_provider(&codex_dir)?.ok_or_else(|| {
         CodexxError::Config("当前不是可编辑的第三方供应商，未修改保存记录".to_string())
     })?;
     let matches = matching_saved_provider_ids_for_live(&live, &saved_before);
-    match matches.as_slice() {
-        [] => {
-            if saved_before
-                .iter()
-                .any(|candidate| candidate.id == provider.id)
-            {
-                return Err(CodexxError::Config(format!(
-                    "供应商 ID {} 已被另一条配置使用，请更换名称后再保存",
-                    provider.id
-                )));
-            }
-        }
-        [active_id] if active_id == &provider.id => {}
-        [active_id] => {
+    if matches.is_empty() {
+        if saved_before
+            .iter()
+            .any(|candidate| candidate.id == provider.id)
+        {
             return Err(CodexxError::Config(format!(
-                "当前启用的是 {active_id}，不能把 {} 作为活动配置保存",
+                "供应商 ID {} 已被另一条配置使用，请更换名称后再保存",
                 provider.id
             )));
         }
-        _ => {
-            return Err(CodexxError::Config(
-                "当前 live 供应商匹配到多条保存记录，请先清理重复配置".to_string(),
-            ));
-        }
+    } else if !matches.iter().any(|active_id| active_id == &provider.id) {
+        return Err(CodexxError::Config(format!(
+            "当前 live 配置不匹配供应商 {}，不能作为活动配置保存",
+            provider.id
+        )));
     }
 
     let (saved, rollback) = save_provider_with_rollback_inner(provider)?;
@@ -1319,15 +1311,18 @@ pub(crate) fn delete_saved_provider_inner(id: &str, config_dir: Option<String>) 
         return Err(CodexxError::Config("供应商 ID 不能为空".to_string()));
     }
     let codex_dir = resolve_codex_dir(config_dir)?;
-    let providers = list_saved_providers_inner()?;
+    let conn = open_store()?;
+    let providers = list_saved_providers_on_connection(&conn)?;
     if let Some(live) = detected_live_custom_provider(&codex_dir)? {
         let active_ids = matching_saved_provider_ids_for_live(&live, &providers);
-        if live.id == id || active_ids.iter().any(|active_id| active_id == id) {
+        let active_id = reconcile_active_provider_on_connection(&conn, &codex_dir, &active_ids)?;
+        if live.id == id || active_id.as_deref() == Some(id) {
             return Err(CodexxError::Config(
                 "不能直接删除当前启用的供应商，请先切换到官方配置或其他供应商".to_string(),
             ));
         }
     }
+    drop(conn);
     delete_provider_inner(id)
 }
 
@@ -1335,7 +1330,7 @@ pub(crate) fn delete_saved_provider_inner(id: &str, config_dir: Option<String>) 
 mod tests {
     use super::*;
     use crate::file_io::{write_json, write_text};
-    use crate::providers::delete_provider_inner;
+    use crate::providers::{delete_provider_inner, remember_active_provider_on_connection};
     use crate::providers::{list_saved_providers_inner, save_provider_inner};
     use serde_json::json;
     use std::fs;
@@ -1978,6 +1973,142 @@ command = "docs-server"
 
         delete_provider_inner(&id).expect("delete test provider");
         fs::remove_dir_all(codex_dir).expect("remove active provider test directory");
+    }
+
+    #[test]
+    fn active_provider_save_uses_explicit_id_when_live_profile_has_duplicates() {
+        let _db_guard = crate::app_db::test_db_guard();
+        let tag = 50_001;
+        let first_id = format!("active-duplicate-first-{tag}");
+        let target_id = format!("active-duplicate-target-{tag}");
+        let codex_dir = active_provider_test_dir("duplicate-explicit-edit", tag);
+        let first =
+            active_provider_fixture(tag, &first_id, "Shared Before", "model-before", "sk-before");
+        let target = active_provider_fixture(
+            tag,
+            &target_id,
+            "Shared Before",
+            "model-before",
+            "sk-before",
+        );
+        save_provider_inner(first.clone()).expect("save first duplicate provider");
+        save_provider_inner(target).expect("save target duplicate provider");
+        write_active_provider_files(&codex_dir, &first);
+
+        let updated = active_provider_fixture(
+            tag,
+            &target_id,
+            "Explicit Target",
+            "model-after",
+            "sk-after",
+        );
+        let result = save_active_provider_inner(updated, Some(codex_dir.display().to_string()))
+            .expect("edit the explicitly selected active duplicate");
+
+        let untouched = saved_provider(&first_id);
+        assert_eq!(untouched.provider_name, "Shared Before");
+        assert_eq!(untouched.model, "model-before");
+        assert_eq!(untouched.api_key.as_deref(), Some("sk-before"));
+        let saved_target = saved_provider(&target_id);
+        assert_eq!(saved_target.provider_name, "Explicit Target");
+        assert_eq!(saved_target.model, "model-after");
+        assert_eq!(saved_target.api_key.as_deref(), Some("sk-after"));
+        let state = serde_json::to_value(&result.state).expect("serialize updated state");
+        assert_eq!(
+            state["activeSavedProviderId"].as_str(),
+            Some(target_id.as_str())
+        );
+
+        delete_provider_inner(&first_id).expect("delete first duplicate provider");
+        delete_provider_inner(&target_id).expect("delete target duplicate provider");
+        fs::remove_dir_all(codex_dir).expect("remove duplicate edit test directory");
+    }
+
+    #[test]
+    fn explicit_current_id_protects_only_the_active_duplicate_from_deletion() {
+        let _db_guard = crate::app_db::test_db_guard();
+        let tag = 50_002;
+        let first_id = format!("active-delete-duplicate-first-{tag}");
+        let remaining_id = format!("active-delete-duplicate-remaining-{tag}");
+        let codex_dir = active_provider_test_dir("duplicate-delete-guard", tag);
+        let first = active_provider_fixture(
+            tag,
+            &first_id,
+            "Shared Provider",
+            "shared-model",
+            "sk-shared",
+        );
+        let remaining = active_provider_fixture(
+            tag,
+            &remaining_id,
+            "Shared Provider",
+            "shared-model",
+            "sk-shared",
+        );
+        save_provider_inner(first.clone()).expect("save first duplicate provider");
+        save_provider_inner(remaining).expect("save remaining duplicate provider");
+        write_active_provider_files(&codex_dir, &first);
+        let conn = open_store().expect("open provider store");
+        remember_active_provider_on_connection(&conn, &codex_dir, &first_id)
+            .expect("remember the explicit current provider");
+        drop(conn);
+
+        delete_saved_provider_inner(&remaining_id, Some(codex_dir.display().to_string()))
+            .expect("delete the inactive duplicate");
+        assert!(list_saved_providers_inner()
+            .expect("list providers after duplicate deletion")
+            .iter()
+            .all(|provider| provider.id != remaining_id));
+        let delete_error =
+            delete_saved_provider_inner(&first_id, Some(codex_dir.display().to_string()))
+                .expect_err("the explicitly selected provider must be protected");
+        assert!(delete_error.to_string().contains("不能直接删除当前启用"));
+        assert_eq!(saved_provider(&first_id).provider_name, "Shared Provider");
+
+        delete_provider_inner(&first_id).expect("delete active duplicate during cleanup");
+        fs::remove_dir_all(codex_dir).expect("remove duplicate delete test directory");
+    }
+
+    #[test]
+    fn active_provider_save_preserves_a_legacy_custom_record_id() {
+        let _db_guard = crate::app_db::test_db_guard();
+        let tag = 50_003;
+        let temporary_id = format!("legacy-custom-seed-{tag}");
+        let codex_dir = active_provider_test_dir("legacy-custom-edit", tag);
+        let temporary = active_provider_fixture(
+            tag,
+            &temporary_id,
+            "Legacy Before",
+            "model-before",
+            "sk-before",
+        );
+        save_provider_inner(temporary.clone()).expect("seed temporary legacy provider");
+        let conn = open_store().expect("open provider store");
+        conn.execute(
+            "UPDATE providers SET id = 'custom' WHERE id = ?1",
+            [&temporary_id],
+        )
+        .expect("restore historical custom ID");
+        drop(conn);
+
+        let mut live = temporary;
+        live.id = "custom".to_string();
+        write_active_provider_files(&codex_dir, &live);
+        let updated =
+            active_provider_fixture(tag, "custom", "Legacy After", "model-after", "sk-after");
+        let result = save_active_provider_inner(updated, Some(codex_dir.display().to_string()))
+            .expect("edit active provider with a legacy custom ID");
+
+        assert_eq!(saved_provider("custom").provider_name, "Legacy After");
+        assert!(list_saved_providers_inner()
+            .expect("list providers after legacy edit")
+            .iter()
+            .all(|provider| provider.id != "custom-custom"));
+        let state = serde_json::to_value(&result.state).expect("serialize updated state");
+        assert_eq!(state["activeSavedProviderId"].as_str(), Some("custom"));
+
+        delete_provider_inner("custom").expect("delete legacy custom provider");
+        fs::remove_dir_all(codex_dir).expect("remove legacy custom test directory");
     }
 
     #[test]

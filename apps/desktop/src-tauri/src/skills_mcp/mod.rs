@@ -18,17 +18,74 @@ pub(crate) use types::ManagedSkill;
 
 use crate::error::Result;
 use crate::file_io::{ensure_directory, io_err};
-use crate::paths::home_dir;
+use crate::paths::{home_dir, normalized_path_scope};
 use crate::resolve_codex_dir;
+use crate::{now_rfc3339, open_db};
 use mcp::{
     db_managed_mcp, import_ccswitch_mcp_servers_for_codex, list_mcp_from_config, mcp_summary,
     preview_ccswitch_mcp_servers_for_codex, save_managed_mcp,
 };
+use rusqlite::params;
 use skills::{
     codex_skills_dir, copy_dir_recursive, disabled_skills_dir, sanitize_dir_name, scan_skill_dir,
 };
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::path::Path;
+
+const SKILLS_MCP_NOTE_MAX_CHARS: usize = 1000;
+
+fn normalized_note_item_kind(item_kind: &str) -> Result<&'static str> {
+    match item_kind.trim().to_ascii_lowercase().as_str() {
+        "skill" => Ok("skill"),
+        "mcp" => Ok("mcp"),
+        _ => Err(crate::error::CodexxError::Config(
+            "备注类型必须是 skill 或 mcp".to_string(),
+        )),
+    }
+}
+
+fn skills_mcp_notes(codex_dir: &Path) -> Result<HashMap<(String, String), String>> {
+    let conn = open_db()?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT item_kind, item_id, note
+             FROM skills_mcp_notes
+             WHERE codex_dir = ?1
+             ORDER BY item_kind ASC, item_id ASC",
+        )
+        .map_err(|error| crate::error::CodexxError::Database(error.to_string()))?;
+    let rows = stmt
+        .query_map([normalized_path_scope(codex_dir)], |row| {
+            Ok((
+                (row.get::<_, String>(0)?, row.get::<_, String>(1)?),
+                row.get::<_, String>(2)?,
+            ))
+        })
+        .map_err(|error| crate::error::CodexxError::Database(error.to_string()))?;
+    let mut notes = HashMap::new();
+    for row in rows {
+        let (key, note) =
+            row.map_err(|error| crate::error::CodexxError::Database(error.to_string()))?;
+        notes.insert(key, note);
+    }
+    Ok(notes)
+}
+
+fn attach_skills_mcp_notes(
+    codex_dir: &Path,
+    skills: &mut [types::ManagedSkill],
+    mcp_servers: &mut [ManagedMcpServer],
+) -> Result<()> {
+    let notes = skills_mcp_notes(codex_dir)?;
+    for skill in skills {
+        skill.note = notes.get(&("skill".to_string(), skill.id.clone())).cloned();
+    }
+    for server in mcp_servers {
+        server.note = notes.get(&("mcp".to_string(), server.id.clone())).cloned();
+    }
+    Ok(())
+}
 
 fn extend_unmanaged_mcp_candidates(
     output: &mut Vec<ManagedMcpServer>,
@@ -82,11 +139,13 @@ pub(crate) fn build_skills_mcp_state_inner(config_dir: Option<String>) -> Result
             enabled,
             source: "Codex-X".to_string(),
             summary,
+            note: None,
             command,
             url,
             config_json: config,
         });
     }
+    attach_skills_mcp_notes(&codex_dir, &mut skills, &mut mcp_servers)?;
     sort_managed_mcp_servers(&mut mcp_servers);
     sort_managed_skills(&mut skills);
     Ok(SkillsMcpState {
@@ -97,6 +156,63 @@ pub(crate) fn build_skills_mcp_state_inner(config_dir: Option<String>) -> Result
         mcp_servers,
         warnings,
     })
+}
+
+pub(crate) fn save_skills_mcp_note_inner(
+    config_dir: Option<String>,
+    item_kind: String,
+    id: String,
+    note: String,
+) -> Result<SkillsMcpState> {
+    let item_kind = normalized_note_item_kind(&item_kind)?;
+    if id.trim().is_empty() {
+        return Err(crate::error::CodexxError::Config(
+            "备注对象 ID 不能为空".to_string(),
+        ));
+    }
+    let id = id.as_str();
+    let note = note.trim();
+    if note.chars().count() > SKILLS_MCP_NOTE_MAX_CHARS {
+        return Err(crate::error::CodexxError::Config(format!(
+            "备注不能超过 {SKILLS_MCP_NOTE_MAX_CHARS} 个字符"
+        )));
+    }
+
+    let codex_dir = resolve_codex_dir(config_dir.clone())?;
+    let codex_dir_scope = normalized_path_scope(&codex_dir);
+    let current = build_skills_mcp_state_inner(config_dir.clone())?;
+    let exists = match item_kind {
+        "skill" => current.skills.iter().any(|skill| skill.id == id),
+        "mcp" => current.mcp_servers.iter().any(|server| server.id == id),
+        _ => false,
+    };
+    if !exists {
+        return Err(crate::error::CodexxError::Config(format!(
+            "未找到要备注的 {item_kind}: {id}"
+        )));
+    }
+
+    let conn = open_db()?;
+    if note.is_empty() {
+        conn.execute(
+            "DELETE FROM skills_mcp_notes
+             WHERE codex_dir = ?1 AND item_kind = ?2 AND item_id = ?3",
+            params![codex_dir_scope, item_kind, id],
+        )
+        .map_err(|error| crate::error::CodexxError::Database(error.to_string()))?;
+    } else {
+        conn.execute(
+            "INSERT INTO skills_mcp_notes
+                (codex_dir, item_kind, item_id, note, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(codex_dir, item_kind, item_id) DO UPDATE SET
+                note = excluded.note,
+                updated_at = excluded.updated_at",
+            params![codex_dir_scope, item_kind, id, note, now_rfc3339()],
+        )
+        .map_err(|error| crate::error::CodexxError::Database(error.to_string()))?;
+    }
+    build_skills_mcp_state_inner(config_dir)
 }
 
 pub(crate) fn import_existing_skills_mcp_inner(
@@ -223,6 +339,7 @@ mod tests {
             enabled: true,
             source: source.to_string(),
             summary: id.to_string(),
+            note: None,
             command: Some(id.to_string()),
             url: None,
             config_json: json!({ "command": id }),
@@ -270,5 +387,162 @@ mod tests {
             ],
         );
         assert!(second_preview.is_empty());
+    }
+
+    #[test]
+    fn custom_notes_are_isolated_by_kind_and_codex_home_and_empty_text_clears_them() {
+        let _db_guard = crate::app_db::test_db_guard();
+        let item_id = format!("shared-note-item-{}", std::process::id());
+        let spaced_id = " spaced-mcp ";
+        let codex_dir =
+            std::env::temp_dir().join(format!("codex-x-note-state-{}", std::process::id()));
+        let other_codex_dir =
+            std::env::temp_dir().join(format!("codex-x-note-state-other-{}", std::process::id()));
+        let prepare_codex_dir = |dir: &Path| {
+            let _ = fs::remove_dir_all(dir);
+            let skill_dir = dir.join("skills").join(&item_id);
+            fs::create_dir_all(&skill_dir).expect("create test skill directory");
+            fs::write(
+                skill_dir.join("SKILL.md"),
+                format!("---\nname: {item_id}\ndescription: test\n---\n"),
+            )
+            .expect("write test skill");
+            fs::write(
+                dir.join("config.toml"),
+                format!(
+                    "[mcp_servers.{item_id}]\ncommand = \"test-server\"\n\
+                     [mcp_servers.\"{spaced_id}\"]\ncommand = \"spaced-server\"\n"
+                ),
+            )
+            .expect("write test MCP config");
+        };
+        prepare_codex_dir(&codex_dir);
+        prepare_codex_dir(&other_codex_dir);
+
+        let conn = open_db().expect("open app database");
+        conn.execute(
+            "DELETE FROM skills_mcp_notes WHERE item_id IN (?1, ?2)",
+            params![&item_id, spaced_id],
+        )
+        .expect("clear stale test notes");
+        drop(conn);
+        let config_dir = Some(codex_dir.display().to_string());
+
+        save_skills_mcp_note_inner(
+            config_dir.clone(),
+            "skill".to_string(),
+            item_id.clone(),
+            "  我的 Skill 备注  ".to_string(),
+        )
+        .expect("save skill note");
+        let state = save_skills_mcp_note_inner(
+            config_dir.clone(),
+            "mcp".to_string(),
+            item_id.clone(),
+            "MCP note".to_string(),
+        )
+        .expect("save MCP note");
+        assert_eq!(
+            state
+                .skills
+                .iter()
+                .find(|skill| skill.id == item_id)
+                .and_then(|skill| skill.note.as_deref()),
+            Some("我的 Skill 备注")
+        );
+        assert_eq!(
+            state
+                .mcp_servers
+                .iter()
+                .find(|server| server.id == item_id)
+                .and_then(|server| server.note.as_deref()),
+            Some("MCP note")
+        );
+        let state = save_skills_mcp_note_inner(
+            config_dir.clone(),
+            "mcp".to_string(),
+            spaced_id.to_string(),
+            "Spaced ID note".to_string(),
+        )
+        .expect("save note without normalizing the MCP ID");
+        assert_eq!(
+            state
+                .mcp_servers
+                .iter()
+                .find(|server| server.id == spaced_id)
+                .and_then(|server| server.note.as_deref()),
+            Some("Spaced ID note")
+        );
+
+        let other_config_dir = Some(other_codex_dir.display().to_string());
+        let other_state = build_skills_mcp_state_inner(other_config_dir.clone())
+            .expect("load other CODEX_HOME state");
+        assert!(other_state
+            .mcp_servers
+            .iter()
+            .find(|server| server.id == item_id)
+            .is_some_and(|server| server.note.is_none()));
+        save_skills_mcp_note_inner(
+            other_config_dir,
+            "mcp".to_string(),
+            item_id.clone(),
+            "Other MCP note".to_string(),
+        )
+        .expect("save note for other CODEX_HOME");
+        let original_state = build_skills_mcp_state_inner(config_dir.clone())
+            .expect("reload original CODEX_HOME state");
+        assert_eq!(
+            original_state
+                .mcp_servers
+                .iter()
+                .find(|server| server.id == item_id)
+                .and_then(|server| server.note.as_deref()),
+            Some("MCP note")
+        );
+
+        let state = save_skills_mcp_note_inner(
+            config_dir.clone(),
+            "skill".to_string(),
+            item_id.clone(),
+            "  ".to_string(),
+        )
+        .expect("clear skill note");
+        assert!(state
+            .skills
+            .iter()
+            .find(|skill| skill.id == item_id)
+            .is_some_and(|skill| skill.note.is_none()));
+        assert_eq!(
+            state
+                .mcp_servers
+                .iter()
+                .find(|server| server.id == item_id)
+                .and_then(|server| server.note.as_deref()),
+            Some("MCP note")
+        );
+        assert!(save_skills_mcp_note_inner(
+            config_dir.clone(),
+            "unknown".to_string(),
+            item_id.clone(),
+            "note".to_string(),
+        )
+        .is_err());
+        assert!(save_skills_mcp_note_inner(
+            config_dir,
+            "mcp".to_string(),
+            item_id.clone(),
+            "x".repeat(SKILLS_MCP_NOTE_MAX_CHARS + 1),
+        )
+        .is_err());
+
+        let conn = open_db().expect("reopen app database");
+        conn.execute(
+            "DELETE FROM skills_mcp_notes WHERE item_id IN (?1, ?2)",
+            params![&item_id, spaced_id],
+        )
+        .expect("remove test notes");
+        drop(conn);
+        fs::remove_dir_all(&codex_dir).expect("remove test Codex directory");
+        fs::remove_dir_all(&other_codex_dir).expect("remove other test Codex directory");
     }
 }

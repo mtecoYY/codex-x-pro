@@ -438,6 +438,10 @@
   border-color: transparent;
 }
 
+:root[data-theme="dark"] .cx-providers-row-meta {
+  color: #aeb3bc;
+}
+
 :root[data-theme="dark"] .cx-providers-info-grid code {
   color: var(--cx-dark-muted);
   background: transparent;
@@ -770,6 +774,20 @@
   box-shadow: 0 7px 18px rgba(0, 0, 0, 0.18);
 }
 
+:root[data-theme="dark"] .cx-skills-note-field > span {
+  color: #d8dbe0;
+}
+
+:root[data-theme="dark"] .cx-skills-note-field textarea {
+  color: #e5e7eb;
+  background: var(--cx-dark-surface-recessed);
+  border-color: var(--cx-dark-border);
+}
+
+:root[data-theme="dark"] .cx-skills-note-meta {
+  color: var(--cx-dark-subtle);
+}
+
 :root[data-theme="dark"] .cx-prompts-row:hover {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(139, 92, 246, 0.4);
@@ -1087,4 +1105,52 @@
   color: #ff9bab;
   background: #4a2e35;
   border-color: #82505b;
+}
+
+:root[data-theme="dark"] .cx-gateway-restart-warning,
+:root[data-theme="dark"] .cx-gateway-error,
+:root[data-theme="dark"] .cx-gateway-truncation {
+  color: #ffaaa4;
+  background: #4a2e35;
+  border-color: #82505b;
+}
+
+:root[data-theme="dark"] .cx-gateway-script-notice {
+  color: #e4c37f;
+  background: #493f2b;
+  border-color: #75633b;
+}
+
+:root[data-theme="dark"] .cx-gateway-script-notice--active {
+  color: var(--cx-dark-green);
+  background: var(--cx-dark-green-surface);
+  border-color: #4f7767;
+}
+
+:root[data-theme="dark"] .cx-gateway-table th,
+:root[data-theme="dark"] .cx-page-panel-header {
+  background: var(--cx-dark-surface-raised);
+  border-color: var(--cx-dark-border);
+}
+
+:root[data-theme="dark"] .cx-gateway-table td,
+:root[data-theme="dark"] .cx-gateway-runtime-status {
+  border-color: var(--cx-dark-border);
+}
+
+:root[data-theme="dark"] .cx-gateway-table tbody tr:hover {
+  background: var(--cx-dark-surface-hover);
+}
+
+:root[data-theme="dark"] .cx-gateway-table tbody tr.cx-gateway-row--error,
+:root[data-theme="dark"] .cx-gateway-table tbody tr.cx-gateway-row--error:hover {
+  background: #4a2e35;
+}
+
+:root[data-theme="dark"] .cx-gateway-script,
+:root[data-theme="dark"] .cx-gateway-detail-pre,
+:root[data-theme="dark"] .cx-gateway-code-pre {
+  color: var(--cx-dark-text);
+  background: var(--cx-dark-surface-recessed);
+  border-color: var(--cx-dark-border);
 }

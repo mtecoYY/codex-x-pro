@@ -314,7 +314,9 @@ fn active_session_storage_snapshot(
 
         if cols.contains("model_provider") {
             let cwd_col = sql_select_column(&cols, "cwd", "NULL");
-            let query = format!("SELECT id, model_provider, {cwd_col} FROM threads");
+            let archived_col = sql_select_column(&cols, "archived", "0");
+            let query =
+                format!("SELECT id, model_provider, {cwd_col}, {archived_col} FROM threads");
             let mut mismatch_stmt = conn
                 .prepare(&query)
                 .map_err(|error| CodexxError::Database(error.to_string()))?;
@@ -324,11 +326,12 @@ fn active_session_storage_snapshot(
                         row.get::<_, String>(0)?,
                         row.get::<_, Option<String>>(1)?,
                         row.get::<_, Option<String>>(2)?,
+                        row.get::<_, i64>(3)?,
                     ))
                 })
                 .map_err(|error| CodexxError::Database(error.to_string()))?;
             for row in mismatches {
-                let (id, provider, cwd) =
+                let (id, provider, cwd, archived) =
                     row.map_err(|error| CodexxError::Database(error.to_string()))?;
                 if sqlite_thread_needs_alignment(
                     &rollouts,
@@ -338,6 +341,7 @@ fn active_session_storage_snapshot(
                         provider: provider.as_deref(),
                         cwd: cwd.as_deref(),
                         cwd_column: cols.contains("cwd"),
+                        archived: archived != 0,
                     },
                 ) {
                     snapshot.mismatched_ids.insert(id);

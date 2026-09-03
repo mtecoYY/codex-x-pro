@@ -261,7 +261,7 @@ experimental_bearer_token = "sk-same"
 }
 
 #[test]
-fn manual_provider_save_upserts_same_url_and_key_but_keeps_different_keys() {
+fn manual_provider_save_keeps_independent_ids_with_any_configuration() {
     let conn = provider_test_connection();
     let first = normalize_saved_provider(provider_fixture(
         "first",
@@ -272,11 +272,29 @@ fn manual_provider_save_upserts_same_url_and_key_but_keeps_different_keys() {
         None,
     ))
     .expect("normalize first");
-    let added =
-        upsert_provider_on_connection(&conn, first, ProviderUpsertMode::Manual).expect("add first");
+    let added = upsert_provider_on_connection(&conn, first.clone(), ProviderUpsertMode::Manual)
+        .expect("add first");
     assert_eq!(added.kind, ProviderUpsertKind::Added);
 
-    let renamed = normalize_saved_provider(provider_fixture(
+    let exact_copy = SavedProvider {
+        id: "exact-copy".to_string(),
+        ..first.clone()
+    };
+    let exact_add = upsert_provider_on_connection(&conn, exact_copy, ProviderUpsertMode::Manual)
+        .expect("keep exact copy with a distinct ID");
+    assert_eq!(exact_add.kind, ProviderUpsertKind::Added);
+
+    let renamed_copy = SavedProvider {
+        id: "renamed-copy".to_string(),
+        provider_name: "Only Name Changed".to_string(),
+        ..first
+    };
+    let renamed_add =
+        upsert_provider_on_connection(&conn, renamed_copy, ProviderUpsertMode::Manual)
+            .expect("keep renamed copy with a distinct ID");
+    assert_eq!(renamed_add.kind, ProviderUpsertKind::Added);
+
+    let different_model = normalize_saved_provider(provider_fixture(
         "second",
         "Second Name",
         "HTTPS://EXAMPLE.COM:443/v1",
@@ -284,13 +302,13 @@ fn manual_provider_save_upserts_same_url_and_key_but_keeps_different_keys() {
         "model-b",
         None,
     ))
-    .expect("normalize renamed");
-    let merged = upsert_provider_on_connection(&conn, renamed, ProviderUpsertMode::Manual)
-        .expect("merge same identity");
-    assert_eq!(merged.kind, ProviderUpsertKind::Merged);
-    assert_eq!(merged.provider.id, "first");
-    assert_eq!(merged.provider.provider_name, "Second Name");
-    assert_eq!(merged.provider.model, "model-b");
+    .expect("normalize different model");
+    let model_add =
+        upsert_provider_on_connection(&conn, different_model, ProviderUpsertMode::Manual)
+            .expect("keep different model");
+    assert_eq!(model_add.kind, ProviderUpsertKind::Added);
+    assert_eq!(model_add.provider.id, "second");
+    assert_eq!(model_add.provider.model, "model-b");
 
     let other_key = normalize_saved_provider(provider_fixture(
         "third",
@@ -304,11 +322,11 @@ fn manual_provider_save_upserts_same_url_and_key_but_keeps_different_keys() {
     let second_add = upsert_provider_on_connection(&conn, other_key, ProviderUpsertMode::Manual)
         .expect("keep different credential");
     assert_eq!(second_add.kind, ProviderUpsertKind::Added);
-    assert_eq!(list_saved_providers_on_connection(&conn).unwrap().len(), 2);
+    assert_eq!(list_saved_providers_on_connection(&conn).unwrap().len(), 5);
 }
 
 #[test]
-fn imported_provider_merge_keeps_local_id_and_applies_complete_source() {
+fn imported_provider_keeps_its_source_id_beside_a_matching_manual_record() {
     let conn = provider_test_connection();
     let local_toml = r#"model_provider = "custom"
 model = "local-model"
@@ -329,7 +347,7 @@ experimental_bearer_token = "sk-same"
 
     let imported_toml = r#"# authoritative cc-switch template
 model_provider = "custom"
-model = "cc-model"
+model = "local-model"
 service_tier = "priority"
 
 [model_providers.custom]
@@ -346,17 +364,17 @@ trust_level = "trusted"
         "CC Name",
         "https://EXAMPLE.com:443/v1/",
         Some("sk-same"),
-        "cc-model",
+        "local-model",
         Some(imported_toml),
     );
     imported_fixture.requires_openai_auth = false;
     let imported = normalize_saved_provider(imported_fixture).expect("normalize import");
     let result = upsert_ccswitch_provider_on_connection(&conn, imported.clone(), "cc-switch-id")
-        .expect("merge import");
-    assert_eq!(result.kind, ProviderUpsertKind::Merged);
-    assert_eq!(result.provider.id, "local");
+        .expect("import independent source record");
+    assert_eq!(result.kind, ProviderUpsertKind::Added);
+    assert_eq!(result.provider.id, "cc-switch-id");
     assert_eq!(result.provider.provider_name, "CC Name");
-    assert_eq!(result.provider.model, "cc-model");
+    assert_eq!(result.provider.model, "local-model");
     assert!(!result.provider.requires_openai_auth);
     let normalized_toml = result.provider.toml_config.as_deref().unwrap();
     assert!(normalized_toml.contains("# authoritative cc-switch template"));
@@ -365,27 +383,28 @@ trust_level = "trusted"
     assert!(normalized_toml.contains("[projects.\"/work/project\"]"));
     assert!(normalized_toml.contains("wire_api = \"responses\""));
     assert!(!normalized_toml.contains("experimental_bearer_token"));
-    assert_eq!(list_saved_providers_on_connection(&conn).unwrap().len(), 1);
+    assert_eq!(list_saved_providers_on_connection(&conn).unwrap().len(), 2);
 
     let repeated = upsert_ccswitch_provider_on_connection(&conn, imported, "cc-switch-id")
         .expect("repeat identical import");
-    assert_eq!(repeated.provider.id, "local");
+    assert_eq!(repeated.kind, ProviderUpsertKind::Updated);
+    assert_eq!(repeated.provider.id, "cc-switch-id");
     assert_eq!(
         repeated.provider.toml_config.as_deref(),
         Some(normalized_toml)
     );
-    assert_eq!(list_saved_providers_on_connection(&conn).unwrap().len(), 1);
+    assert_eq!(list_saved_providers_on_connection(&conn).unwrap().len(), 2);
 }
 
 #[test]
-fn provider_migration_keeps_the_latest_exact_credential_record() {
+fn provider_migration_preserves_independent_manual_profiles() {
     let conn = provider_test_connection();
     let first = provider_fixture(
         "first-id",
         "Local Name",
         "HTTPS://EXAMPLE.com:443/v1/",
         Some("sk-same"),
-        "local-model",
+        "imported-model",
         None,
     );
     let duplicate = provider_fixture(
@@ -458,21 +477,15 @@ fn provider_migration_keeps_the_latest_exact_credential_record() {
     );
     assert_eq!(
         consolidate_legacy_provider_duplicates_on_connection(&conn).unwrap(),
-        1
+        0
     );
     let rows = list_saved_providers_on_connection(&conn).unwrap();
-    assert_eq!(rows.len(), 4);
-    let survivor = rows.iter().find(|row| row.id == "later-id").unwrap();
-    assert_eq!(survivor.provider_name, "Imported Name");
-    assert_eq!(survivor.model, "imported-model");
-    assert_eq!(
-        survivor.toml_config.as_deref(),
-        Some("local preserved toml")
-    );
+    assert_eq!(rows.len(), 5);
+    assert!(rows.iter().any(|row| row.id == "first-id"));
+    assert!(rows.iter().any(|row| row.id == "later-id"));
     assert!(rows.iter().any(|row| row.id == "different-key"));
     assert!(rows.iter().any(|row| row.id == "anonymous-a"));
     assert!(rows.iter().any(|row| row.id == "anonymous-b"));
-    assert!(!rows.iter().any(|row| row.id == "first-id"));
 }
 
 #[test]
@@ -588,6 +601,7 @@ fn skills_and_mcp_order_does_not_depend_on_enabled_state() {
         id: id.to_string(),
         name: name.to_string(),
         description: None,
+        note: None,
         directory: id.to_string(),
         enabled,
         source: "test".to_string(),
@@ -602,6 +616,7 @@ fn skills_and_mcp_order_does_not_depend_on_enabled_state() {
         enabled,
         source: "test".to_string(),
         summary: String::new(),
+        note: None,
         command: None,
         url: None,
         config_json: json!({}),
@@ -3143,6 +3158,116 @@ requires_openai_auth = true
         Some("official-access-token")
     );
 
+    let _ = fs::remove_dir_all(codex_dir);
+}
+
+#[test]
+fn duplicate_save_and_snapshot_commands_preserve_current_until_explicit_switch() {
+    let _db_guard = crate::app_db::test_db_guard();
+    let codex_dir = temp_codex_dir("official-snapshot-preserves-current-duplicate");
+    let custom_config = r#"model_provider = "custom"
+model = "duplicate-current-model"
+
+[model_providers.custom]
+name = "Duplicate Current Provider"
+base_url = "https://duplicate-current.example.com/v1"
+wire_api = "responses"
+requires_openai_auth = true
+"#;
+    write_text(&config_path(&codex_dir), custom_config).expect("write custom config");
+    write_json(
+        &auth_path(&codex_dir),
+        &json!({"OPENAI_API_KEY": "sk-duplicate-current", "auth_mode": "apikey"}),
+    )
+    .expect("write proxy auth");
+
+    let original_id = "official-snapshot-current-original";
+    let copy_id = "official-snapshot-current-copy";
+    let original = SavedProvider {
+        id: original_id.to_string(),
+        provider_name: "Duplicate Current Provider".to_string(),
+        base_url: "https://duplicate-current.example.com/v1".to_string(),
+        model: "duplicate-current-model".to_string(),
+        api_key: Some("sk-duplicate-current".to_string()),
+        toml_config: Some(custom_config.trim_end().to_string()),
+        wire_api: "responses".to_string(),
+        requires_openai_auth: true,
+    };
+    save_provider_inner(original.clone()).expect("save original provider");
+    assert_eq!(
+        build_state(codex_dir.clone())
+            .expect("discover and remember the unique current provider")
+            .active_saved_provider_id
+            .as_deref(),
+        Some(original_id)
+    );
+    save_provider_inner(SavedProvider {
+        id: copy_id.to_string(),
+        ..original
+    })
+    .expect("save identical copy");
+    assert_eq!(
+        build_state(codex_dir.clone())
+            .expect("refresh after saving copy")
+            .active_saved_provider_id
+            .as_deref(),
+        Some(original_id)
+    );
+
+    let saved = save_official_config_inner(
+        Some(codex_dir.display().to_string()),
+        Some("official-model".to_string()),
+        Some(
+            json!({
+                "auth_mode": "chatgpt",
+                "tokens": {"access_token": "official-access-token"}
+            })
+            .to_string(),
+        ),
+        None,
+    )
+    .expect("save independent official snapshot");
+    let saved = finish_provider_selection(saved, ActiveProviderSelectionUpdate::ClearIfOfficial);
+    assert!(!saved.state.is_official_provider);
+    assert_eq!(
+        saved.state.active_saved_provider_id.as_deref(),
+        Some(original_id)
+    );
+
+    let restored = restore_official_provider_inner(Some(codex_dir.display().to_string()))
+        .expect("restore independent official snapshot");
+    let restored =
+        finish_provider_selection(restored, ActiveProviderSelectionUpdate::ClearIfOfficial);
+    assert!(!restored.state.is_official_provider);
+    assert_eq!(
+        restored.state.active_saved_provider_id.as_deref(),
+        Some(original_id)
+    );
+    assert_eq!(
+        build_state(codex_dir.clone())
+            .expect("refresh current provider state")
+            .active_saved_provider_id
+            .as_deref(),
+        Some(original_id)
+    );
+
+    let switched = save_provider_toml_config_inner(ProviderTomlInput {
+        config_dir: Some(codex_dir.display().to_string()),
+        config_text: custom_config.to_string(),
+        api_key: Some("sk-duplicate-current".to_string()),
+    })
+    .expect("apply the identical copied provider");
+    let switched = finish_provider_selection(
+        switched,
+        ActiveProviderSelectionUpdate::Set(copy_id.to_string()),
+    );
+    assert_eq!(
+        switched.state.active_saved_provider_id.as_deref(),
+        Some(copy_id)
+    );
+
+    providers::delete_provider_inner(copy_id).expect("delete copied provider");
+    providers::delete_provider_inner(original_id).expect("delete original provider");
     let _ = fs::remove_dir_all(codex_dir);
 }
 

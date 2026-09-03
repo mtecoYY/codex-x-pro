@@ -1,7 +1,7 @@
 use crate::error::{CodexxError, Result};
 #[cfg(test)]
 use chrono::Local;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub(crate) fn home_dir() -> Result<PathBuf> {
     dirs::home_dir().ok_or(CodexxError::NoHomeDir)
@@ -31,5 +31,15 @@ pub(crate) fn app_home() -> Result<PathBuf> {
             }
         }
         Ok(home_dir()?.join(".codexx"))
+    }
+}
+
+pub(crate) fn normalized_path_scope(path: &Path) -> String {
+    let resolved = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let normalized = resolved.to_string_lossy().replace('\\', "/");
+    if cfg!(target_os = "windows") {
+        normalized.to_ascii_lowercase()
+    } else {
+        normalized
     }
 }

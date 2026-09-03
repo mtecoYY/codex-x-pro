@@ -15,11 +15,46 @@ const WINDOWS_CODEX_PACKAGE_IDENTITIES: &[&str] =
     &["OpenAI.Codex", "OpenAI.CodexBeta", "OpenAI.ChatGPT-Desktop"];
 #[cfg(target_os = "windows")]
 const WINDOWS_CODEX_EXECUTABLES: &[&str] = &["ChatGPT.exe", "Codex.exe", "codex.exe"];
+#[cfg(any(target_os = "macos", test))]
+const MACOS_CODEX_APP_NAMES: &[&str] = &[
+    "Codex.app",
+    "OpenAI Codex.app",
+    "OpenAI.Codex.app",
+    "ChatGPT Codex.app",
+    "ChatGPT.app",
+];
+#[cfg(any(target_os = "macos", test))]
+const MACOS_CODEX_BUNDLE_IDS: &[&str] = &["com.openai.codex", "com.openai.codex.beta"];
 
 const CODEX_VERSION_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 const PROGRAM_TIMEOUT: Duration = Duration::from_secs(2);
 const PROGRAM_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const CHILD_TERMINATION_GRACE: Duration = Duration::from_millis(250);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const CODEX_DESKTOP_COMMAND_TIMEOUT: Duration = Duration::from_secs(5);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const CODEX_DESKTOP_QUIT_TIMEOUT: Duration = Duration::from_secs(8);
+#[cfg(target_os = "macos")]
+const CODEX_DESKTOP_POLL_INTERVAL: Duration = Duration::from_millis(100);
+#[cfg(any(target_os = "windows", test))]
+const WINDOWS_RESTART_RESULT_PREFIX: &str = "CODEX_X_DESKTOP_RESTART";
+
+#[cfg(any(target_os = "macos", test))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MacosAppMetadata {
+    bundle_id: String,
+    executable: String,
+    display_name: Option<String>,
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Debug, Clone)]
+struct MacosCodexApp {
+    bundle_id: String,
+    bundle_path: PathBuf,
+    executable_path: PathBuf,
+    app_name: String,
+}
 
 static CODEX_VERSION: OnceLock<String> = OnceLock::new();
 
@@ -172,8 +207,13 @@ fn receive_output(
     }
 }
 
-fn run_program(program: &Path, args: &[&str], deadline: Option<Instant>) -> Option<Output> {
-    let timeout = remaining_timeout(deadline, PROGRAM_TIMEOUT)?;
+fn run_program_with_timeout(
+    program: &Path,
+    args: &[&str],
+    deadline: Option<Instant>,
+    maximum: Duration,
+) -> Option<Output> {
+    let timeout = remaining_timeout(deadline, maximum)?;
     let command_deadline = Instant::now().checked_add(timeout)?;
     let mut command = program_command(program, args);
     command
@@ -220,6 +260,10 @@ fn run_program(program: &Path, args: &[&str], deadline: Option<Instant>) -> Opti
         stdout,
         stderr,
     })
+}
+
+fn run_program(program: &Path, args: &[&str], deadline: Option<Instant>) -> Option<Output> {
+    run_program_with_timeout(program, args, deadline, PROGRAM_TIMEOUT)
 }
 
 fn command_version(program: &Path, deadline: Option<Instant>) -> Option<String> {
@@ -550,47 +594,90 @@ fn windows_where_candidates(_deadline: Option<Instant>) -> Vec<PathBuf> {
     Vec::new()
 }
 
+#[cfg(any(target_os = "macos", test))]
+fn macos_codex_app_paths(home: &Path) -> Vec<PathBuf> {
+    [PathBuf::from("/Applications"), home.join("Applications")]
+        .into_iter()
+        .flat_map(|root| {
+            MACOS_CODEX_APP_NAMES
+                .iter()
+                .map(move |name| root.join(name))
+        })
+        .collect()
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn macos_app_metadata_from_plist(plist: &str) -> Option<MacosAppMetadata> {
+    Some(MacosAppMetadata {
+        bundle_id: plist_string_value(plist, "CFBundleIdentifier")?,
+        executable: plist_string_value(plist, "CFBundleExecutable")?,
+        display_name: plist_string_value(plist, "CFBundleDisplayName")
+            .or_else(|| plist_string_value(plist, "CFBundleName")),
+    })
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn is_supported_macos_codex_bundle_id(bundle_id: &str) -> bool {
+    MACOS_CODEX_BUNDLE_IDS
+        .iter()
+        .any(|supported| bundle_id.eq_ignore_ascii_case(supported))
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn parse_macos_main_process_ids(output: &str, executable_path: &Path) -> Vec<u32> {
+    let executable = executable_path.to_string_lossy();
+    output
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim_start();
+            let pid_end = line.find(char::is_whitespace)?;
+            let pid = line[..pid_end].parse::<u32>().ok()?;
+            let command = line[pid_end..].trim_start();
+            let matches = command == executable
+                || command
+                    .strip_prefix(executable.as_ref())
+                    .is_some_and(|rest| rest.chars().next().is_some_and(char::is_whitespace));
+            matches.then_some(pid)
+        })
+        .collect()
+}
+
 #[cfg(target_os = "macos")]
 fn macos_app_version(deadline: Option<Instant>) -> Option<String> {
     let home = dirs::home_dir().unwrap_or_default();
-    for root in [PathBuf::from("/Applications"), home.join("Applications")] {
-        for name in [
-            "Codex.app",
-            "OpenAI Codex.app",
-            "OpenAI.Codex.app",
-            "ChatGPT Codex.app",
-            "ChatGPT.app",
-        ] {
-            if deadline_expired(deadline) {
-                return None;
-            }
-            let app = root.join(name);
-            if !app.is_dir() {
-                continue;
-            }
-            let app_name = if name == "ChatGPT.app" {
-                "ChatGPT app"
-            } else {
-                "Codex app"
-            };
-            if let Some(version) = macos_info_plist_version(&app).or_else(|| {
-                let app = app.to_str()?;
-                let output = run_program(
-                    Path::new("mdls"),
-                    &["-name", "kMDItemVersion", "-raw", app],
-                    deadline,
-                )?;
-                output
-                    .status
-                    .success()
-                    .then(|| String::from_utf8_lossy(&output.stdout).trim().to_string())
-            }) {
-                if !version.is_empty() && version != "(null)" {
-                    return Some(format!("{app_name} {version}"));
-                }
-            }
-            return Some(format!("{app_name} installed"));
+    for app in macos_codex_app_paths(&home) {
+        if deadline_expired(deadline) {
+            return None;
         }
+        if !app.is_dir() {
+            continue;
+        }
+        let app_name = if app
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name == "ChatGPT.app")
+        {
+            "ChatGPT app"
+        } else {
+            "Codex app"
+        };
+        if let Some(version) = macos_info_plist_version(&app).or_else(|| {
+            let app = app.to_str()?;
+            let output = run_program(
+                Path::new("mdls"),
+                &["-name", "kMDItemVersion", "-raw", app],
+                deadline,
+            )?;
+            output
+                .status
+                .success()
+                .then(|| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        }) {
+            if !version.is_empty() && version != "(null)" {
+                return Some(format!("{app_name} {version}"));
+            }
+        }
+        return Some(format!("{app_name} installed"));
     }
     None
 }
@@ -611,9 +698,363 @@ fn plist_string_value(plist: &str, key: &str) -> Option<String> {
     (!value.is_empty()).then(|| value.to_string())
 }
 
+#[cfg(target_os = "macos")]
+fn macos_plist_raw_value(app: &Path, key: &str, deadline: Option<Instant>) -> Option<String> {
+    let plist_path = app.join("Contents/Info.plist");
+    if let Ok(plist) = fs::read_to_string(&plist_path) {
+        if let Some(value) = plist_string_value(&plist, key) {
+            return Some(value);
+        }
+    }
+
+    let plist_path = plist_path.to_str()?;
+    let output = run_program(
+        Path::new("/usr/bin/plutil"),
+        &["-extract", key, "raw", "-o", "-", plist_path],
+        deadline,
+    )?;
+    if !output.status.success() {
+        return None;
+    }
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    (!value.is_empty()).then_some(value)
+}
+
+#[cfg(target_os = "macos")]
+fn macos_codex_apps(deadline: Option<Instant>) -> Result<Vec<MacosCodexApp>, String> {
+    let home = dirs::home_dir().unwrap_or_default();
+    let mut apps = Vec::new();
+    for app in macos_codex_app_paths(&home) {
+        if deadline_expired(deadline) {
+            return Err("检测 Codex/ChatGPT 客户端超时".to_string());
+        }
+        if !app.is_dir() {
+            continue;
+        }
+
+        let plist = fs::read_to_string(app.join("Contents/Info.plist")).ok();
+        let metadata = plist.as_deref().and_then(macos_app_metadata_from_plist);
+        let bundle_id = metadata
+            .as_ref()
+            .map(|metadata| metadata.bundle_id.clone())
+            .or_else(|| macos_plist_raw_value(&app, "CFBundleIdentifier", deadline));
+        let executable = metadata
+            .as_ref()
+            .map(|metadata| metadata.executable.clone())
+            .or_else(|| macos_plist_raw_value(&app, "CFBundleExecutable", deadline));
+        let Some(bundle_id) = bundle_id.filter(|value| is_supported_macos_codex_bundle_id(value))
+        else {
+            continue;
+        };
+        let Some(executable) = executable.filter(|value| {
+            !value.is_empty()
+                && !value.contains('/')
+                && !value.contains('\\')
+                && !value.contains('\0')
+        }) else {
+            continue;
+        };
+        let executable_path = app.join("Contents/MacOS").join(executable);
+        if !executable_path.is_file() {
+            continue;
+        }
+        let executable_path = executable_path.canonicalize().unwrap_or(executable_path);
+        let display_name = metadata
+            .and_then(|metadata| metadata.display_name)
+            .or_else(|| macos_plist_raw_value(&app, "CFBundleDisplayName", deadline))
+            .or_else(|| macos_plist_raw_value(&app, "CFBundleName", deadline));
+        let app_name = if display_name
+            .as_deref()
+            .is_some_and(|name| name.to_ascii_lowercase().contains("chatgpt"))
+            || app
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.to_ascii_lowercase().contains("chatgpt"))
+        {
+            "ChatGPT"
+        } else {
+            "Codex"
+        };
+        let bundle_path = app.canonicalize().unwrap_or(app);
+        apps.push(MacosCodexApp {
+            bundle_id,
+            bundle_path,
+            executable_path,
+            app_name: app_name.to_string(),
+        });
+    }
+    if apps.is_empty() {
+        Err("未找到可重启的 Codex/ChatGPT 桌面客户端".to_string())
+    } else {
+        Ok(apps)
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn macos_main_process_ids(
+    executable_path: &Path,
+    deadline: Option<Instant>,
+) -> Result<Vec<u32>, String> {
+    let output = run_program_with_timeout(
+        Path::new("/bin/ps"),
+        &["-axo", "pid=,command="],
+        deadline,
+        CODEX_DESKTOP_COMMAND_TIMEOUT,
+    )
+    .ok_or_else(|| "读取 Codex/ChatGPT 客户端进程失败或超时".to_string())?;
+    if !output.status.success() {
+        let message = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if message.is_empty() {
+            "读取 Codex/ChatGPT 客户端进程失败".to_string()
+        } else {
+            format!("读取 Codex/ChatGPT 客户端进程失败: {message}")
+        });
+    }
+    Ok(parse_macos_main_process_ids(
+        &String::from_utf8_lossy(&output.stdout),
+        executable_path,
+    ))
+}
+
+#[cfg(target_os = "macos")]
+fn launch_macos_codex_app(app: &MacosCodexApp) -> Result<(), String> {
+    let deadline = Instant::now()
+        .checked_add(CODEX_DESKTOP_COMMAND_TIMEOUT)
+        .ok_or_else(|| "创建 Codex/ChatGPT 启动超时时间失败".to_string())?;
+    let bundle_path = app
+        .bundle_path
+        .to_str()
+        .ok_or_else(|| "Codex/ChatGPT 客户端路径不是有效文本".to_string())?;
+    let output = run_program_with_timeout(
+        Path::new("/usr/bin/open"),
+        &["-a", bundle_path],
+        Some(deadline),
+        CODEX_DESKTOP_COMMAND_TIMEOUT,
+    )
+    .ok_or_else(|| "启动 Codex/ChatGPT 客户端失败或超时".to_string())?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let message = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    Err(if message.is_empty() {
+        "启动 Codex/ChatGPT 客户端失败".to_string()
+    } else {
+        format!("启动 Codex/ChatGPT 客户端失败: {message}")
+    })
+}
+
+#[cfg(target_os = "macos")]
+pub fn restart_codex_desktop() -> Result<(String, bool), String> {
+    let detection_deadline = Instant::now()
+        .checked_add(CODEX_DESKTOP_COMMAND_TIMEOUT)
+        .ok_or_else(|| "创建 Codex/ChatGPT 检测超时时间失败".to_string())?;
+    let apps = macos_codex_apps(Some(detection_deadline))?;
+    let mut first_installed = None;
+    let mut running_app = None;
+    for app in apps {
+        let is_running =
+            !macos_main_process_ids(&app.executable_path, Some(detection_deadline))?.is_empty();
+        if is_running {
+            running_app = Some(app);
+            break;
+        }
+        if first_installed.is_none() {
+            first_installed = Some(app);
+        }
+    }
+    let was_running = running_app.is_some();
+    let app = running_app
+        .or(first_installed)
+        .ok_or_else(|| "未找到可重启的 Codex/ChatGPT 桌面客户端".to_string())?;
+    if !was_running {
+        launch_macos_codex_app(&app)?;
+        return Ok((app.app_name, false));
+    }
+
+    let quit_script = format!("tell application id \"{}\" to quit", app.bundle_id);
+    let command_deadline = Instant::now()
+        .checked_add(CODEX_DESKTOP_COMMAND_TIMEOUT)
+        .ok_or_else(|| "创建 Codex/ChatGPT 退出命令超时时间失败".to_string())?;
+    let output = run_program_with_timeout(
+        Path::new("/usr/bin/osascript"),
+        &["-e", quit_script.as_str()],
+        Some(command_deadline),
+        CODEX_DESKTOP_COMMAND_TIMEOUT,
+    )
+    .ok_or_else(|| "请求 Codex/ChatGPT 客户端正常退出失败或超时".to_string())?;
+    if !output.status.success() {
+        let message = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if message.is_empty() {
+            "请求 Codex/ChatGPT 客户端正常退出失败".to_string()
+        } else {
+            format!("请求 Codex/ChatGPT 客户端正常退出失败: {message}")
+        });
+    }
+
+    let quit_deadline = Instant::now()
+        .checked_add(CODEX_DESKTOP_QUIT_TIMEOUT)
+        .ok_or_else(|| "创建 Codex/ChatGPT 退出等待时间失败".to_string())?;
+    loop {
+        if macos_main_process_ids(&app.executable_path, Some(quit_deadline))?.is_empty() {
+            break;
+        }
+        if Instant::now() >= quit_deadline {
+            return Err("Codex/ChatGPT 客户端未在限定时间内正常退出，已取消重新启动".to_string());
+        }
+        thread::sleep(CODEX_DESKTOP_POLL_INTERVAL);
+    }
+
+    launch_macos_codex_app(&app)?;
+    Ok((app.app_name, true))
+}
+
 #[cfg(not(target_os = "macos"))]
 fn macos_app_version(_deadline: Option<Instant>) -> Option<String> {
     None
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn parse_windows_restart_result(output: &str) -> Option<(String, bool)> {
+    output.lines().rev().find_map(|line| {
+        let payload = line
+            .trim()
+            .strip_prefix(WINDOWS_RESTART_RESULT_PREFIX)?
+            .strip_prefix('\t')?;
+        let mut fields = payload.split('\t');
+        let app_name = fields.next()?.trim();
+        let was_running = match fields.next()?.trim() {
+            "0" => false,
+            "1" => true,
+            _ => return None,
+        };
+        if fields.next().is_some() || !matches!(app_name, "Codex" | "ChatGPT") {
+            return None;
+        }
+        Some((app_name.to_string(), was_running))
+    })
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn windows_restart_script() -> String {
+    let identities = WINDOWS_CODEX_PACKAGE_IDENTITIES
+        .iter()
+        .map(|identity| format!("'{}'", identity.replace('\'', "''")))
+        .collect::<Vec<_>>()
+        .join(", ");
+    r#"
+$ErrorActionPreference = 'Stop'
+$utf8 = [System.Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = $utf8
+$OutputEncoding = $utf8
+$identities = @(__IDENTITIES__)
+$packages = @(Get-AppxPackage |
+  Where-Object { $identities -contains $_.Name } |
+  Sort-Object -Property Version -Descending |
+  Select-Object -Unique)
+if ($packages.Count -eq 0) { throw 'Supported Codex/ChatGPT Appx package was not found.' }
+
+function Get-CodexDesktopProcesses([string]$root) {
+  $appRoot = $root + 'app\'
+  $resourcesRoot = $appRoot + 'resources\'
+  @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
+    try {
+      $processPath = [IO.Path]::GetFullPath($_.MainModule.FileName)
+      $executableName = [IO.Path]::GetFileName($processPath)
+      ($executableName -ieq 'Codex.exe' -or $executableName -ieq 'ChatGPT.exe') -and
+        $processPath.StartsWith($appRoot, [StringComparison]::OrdinalIgnoreCase) -and
+        -not $processPath.StartsWith($resourcesRoot, [StringComparison]::OrdinalIgnoreCase)
+    } catch {
+      $false
+    }
+  })
+}
+
+$package = $null
+$installRoot = $null
+$processes = @()
+foreach ($candidate in $packages) {
+  $candidateRoot = [IO.Path]::GetFullPath([string]$candidate.InstallLocation).TrimEnd('\') + '\'
+  $candidateProcesses = @(Get-CodexDesktopProcesses $candidateRoot)
+  if ($candidateProcesses.Count -gt 0) {
+    $package = $candidate
+    $installRoot = $candidateRoot
+    $processes = $candidateProcesses
+    break
+  }
+}
+if ($null -eq $package) {
+  $package = $packages[0]
+  $installRoot = [IO.Path]::GetFullPath([string]$package.InstallLocation).TrimEnd('\') + '\'
+  $processes = @(Get-CodexDesktopProcesses $installRoot)
+}
+
+$manifest = Get-AppxPackageManifest -Package $package.PackageFullName
+$application = @($manifest.Package.Applications.Application) | Select-Object -First 1
+$applicationId = [string]$application.Id
+$packageFamily = [string]$package.PackageFamilyName
+if ([string]::IsNullOrWhiteSpace($applicationId) -or [string]::IsNullOrWhiteSpace($packageFamily)) {
+  throw 'Codex/ChatGPT Appx package does not expose a launchable application id.'
+}
+
+$wasRunning = $processes.Count -gt 0
+if ($wasRunning) {
+  foreach ($process in $processes) {
+    Stop-Process -InputObject $process -Force -ErrorAction SilentlyContinue
+  }
+
+  $quitDeadline = [DateTime]::UtcNow.AddSeconds(8)
+  do {
+    $remaining = @(Get-CodexDesktopProcesses $installRoot)
+    if ($remaining.Count -eq 0) { break }
+    Start-Sleep -Milliseconds 100
+  } while ([DateTime]::UtcNow -lt $quitDeadline)
+  $remaining = @(Get-CodexDesktopProcesses $installRoot)
+  if ($remaining.Count -gt 0) {
+    throw 'Codex/ChatGPT background processes could not be stopped before the timeout; relaunch was cancelled.'
+  }
+}
+
+$aumid = $packageFamily + '!' + $applicationId
+Start-Process -FilePath 'explorer.exe' -ArgumentList ('shell:AppsFolder\' + $aumid) | Out-Null
+$appName = if ($package.Name -eq 'OpenAI.ChatGPT-Desktop') { 'ChatGPT' } else { 'Codex' }
+$runningFlag = if ($wasRunning) { '1' } else { '0' }
+[Console]::Out.WriteLine('__RESULT_PREFIX__' + "`t" + $appName + "`t" + $runningFlag)
+"#
+    .replace("__IDENTITIES__", &identities)
+    .replace("__RESULT_PREFIX__", WINDOWS_RESTART_RESULT_PREFIX)
+}
+
+#[cfg(target_os = "windows")]
+pub fn restart_codex_desktop() -> Result<(String, bool), String> {
+    let script = windows_restart_script();
+    let timeout = CODEX_DESKTOP_QUIT_TIMEOUT + CODEX_DESKTOP_COMMAND_TIMEOUT;
+    let deadline = Instant::now()
+        .checked_add(timeout)
+        .ok_or_else(|| "创建 Codex/ChatGPT 重启超时时间失败".to_string())?;
+    let output = run_program_with_timeout(
+        Path::new("powershell.exe"),
+        &[
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script.as_str(),
+        ],
+        Some(deadline),
+        timeout,
+    )
+    .ok_or_else(|| "重启 Codex/ChatGPT 客户端失败或超时".to_string())?;
+    if !output.status.success() {
+        let message = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if message.is_empty() {
+            "重启 Codex/ChatGPT 客户端失败".to_string()
+        } else {
+            format!("重启 Codex/ChatGPT 客户端失败: {message}")
+        });
+    }
+    parse_windows_restart_result(&String::from_utf8_lossy(&output.stdout))
+        .ok_or_else(|| "无法确认 Codex/ChatGPT 客户端的重启结果".to_string())
 }
 
 #[cfg(target_os = "windows")]
@@ -678,6 +1119,11 @@ fn windows_app_version(deadline: Option<Instant>) -> Option<String> {
 #[cfg(not(target_os = "windows"))]
 fn windows_app_version(_deadline: Option<Instant>) -> Option<String> {
     None
+}
+
+#[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+pub fn restart_codex_desktop() -> Result<(String, bool), String> {
+    Err("当前平台暂不支持重启 Codex/ChatGPT 桌面客户端".to_string())
 }
 
 fn path_codex_candidates(deadline: Option<Instant>) -> Vec<PathBuf> {
@@ -805,8 +1251,10 @@ pub fn detect_codex_version() -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        cached_codex_version, latest_windows_package_version, plist_string_value, run_program,
-        version_line, visit_named_files,
+        cached_codex_version, is_supported_macos_codex_bundle_id, latest_windows_package_version,
+        macos_app_metadata_from_plist, macos_codex_app_paths, parse_macos_main_process_ids,
+        parse_windows_restart_result, plist_string_value, run_program, version_line,
+        visit_named_files, windows_restart_script,
     };
     use std::fs;
     use std::path::Path;
@@ -944,6 +1392,40 @@ mod tests {
     }
 
     #[test]
+    fn windows_restart_result_parser_ignores_noise_and_reads_state() {
+        let output = "PowerShell startup text\nCODEX_X_DESKTOP_RESTART\tChatGPT\t1\n";
+        assert_eq!(
+            parse_windows_restart_result(output),
+            Some(("ChatGPT".to_string(), true))
+        );
+        assert_eq!(
+            parse_windows_restart_result("CODEX_X_DESKTOP_RESTART\tCodex\t0\n"),
+            Some(("Codex".to_string(), false))
+        );
+        assert_eq!(
+            parse_windows_restart_result("CODEX_X_DESKTOP_RESTART\tOther\t1\n"),
+            None
+        );
+    }
+
+    #[test]
+    fn windows_restart_script_only_stops_processes_in_the_selected_package_directory() {
+        let script = windows_restart_script();
+        assert!(script.contains("$processPath.StartsWith($appRoot"));
+        assert!(script.contains("$executableName -ieq 'Codex.exe'"));
+        assert!(script.contains("$executableName -ieq 'ChatGPT.exe'"));
+        assert!(script.contains("-not $processPath.StartsWith($resourcesRoot"));
+        assert!(script.contains("Stop-Process -InputObject $process -Force"));
+        assert!(script.contains("[Console]::OutputEncoding = $utf8"));
+        assert!(script.contains("shell:AppsFolder\\"));
+        assert!(!script.contains("CloseMainWindow"));
+        assert!(!script.contains("Get-Process -Name"));
+        assert!(!script.contains("Stop-Process -Name"));
+        assert!(!script.contains("taskkill"));
+        assert!(!script.contains("ApplicationFrameHost"));
+    }
+
+    #[test]
     fn plist_parser_reads_codex_bundle_version() {
         let plist = r#"<plist><dict>
 <key>CFBundleShortVersionString</key>
@@ -952,6 +1434,55 @@ mod tests {
         assert_eq!(
             plist_string_value(plist, "CFBundleShortVersionString").as_deref(),
             Some("1.2026.204")
+        );
+    }
+
+    #[test]
+    fn macos_app_metadata_parser_reads_exact_desktop_identity() {
+        let plist = r#"<plist><dict>
+<key>CFBundleDisplayName</key>
+<string>ChatGPT</string>
+<key>CFBundleExecutable</key>
+<string>ChatGPT</string>
+<key>CFBundleIdentifier</key>
+<string>com.openai.codex</string>
+</dict></plist>"#;
+        let metadata = macos_app_metadata_from_plist(plist).expect("parse app metadata");
+        assert_eq!(metadata.bundle_id, "com.openai.codex");
+        assert_eq!(metadata.executable, "ChatGPT");
+        assert_eq!(metadata.display_name.as_deref(), Some("ChatGPT"));
+        assert!(is_supported_macos_codex_bundle_id(&metadata.bundle_id));
+        assert!(!is_supported_macos_codex_bundle_id("com.example.codex"));
+        assert!(macos_app_metadata_from_plist(
+            "<plist><dict><key>CFBundleIdentifier</key><string>com.openai.codex</string></dict></plist>"
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn macos_app_candidates_reuse_supported_names_in_stable_order() {
+        let paths = macos_codex_app_paths(Path::new("/Users/tester"));
+        assert_eq!(
+            paths.first(),
+            Some(&Path::new("/Applications/Codex.app").to_path_buf())
+        );
+        assert_eq!(
+            paths.last(),
+            Some(&Path::new("/Users/tester/Applications/ChatGPT.app").to_path_buf())
+        );
+    }
+
+    #[test]
+    fn macos_process_parser_only_matches_the_exact_main_executable() {
+        let executable = Path::new("/Applications/ChatGPT.app/Contents/MacOS/ChatGPT");
+        let output = "  101 /Applications/ChatGPT.app/Contents/MacOS/ChatGPT\n\
+  102 /Applications/ChatGPT.app/Contents/MacOS/ChatGPT --started-from-launch-services\n\
+  103 /Applications/ChatGPT.app/Contents/Frameworks/Codex (Renderer).app/Contents/MacOS/Codex (Renderer)\n\
+  104 /Applications/ChatGPT.app/Contents/MacOS/ChatGPT-helper\n\
+  105 /Applications/Other.app/Contents/MacOS/ChatGPT\n";
+        assert_eq!(
+            parse_macos_main_process_ids(output, executable),
+            vec![101, 102]
         );
     }
 }

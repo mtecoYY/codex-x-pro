@@ -115,6 +115,59 @@
 }
 .ui-button--danger:hover:not(:disabled) { filter: brightness(1.08); }
 
+.ui-field {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  color: var(--ui-text-muted);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.ui-field--compact {
+  gap: 5px;
+  font-size: 11px;
+}
+
+.ui-field__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-field__control {
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 10px;
+  color: var(--ui-text);
+  background: var(--ui-surface-elevated);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
+  outline: none;
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease, color 140ms ease;
+}
+
+.ui-field--compact .ui-field__control {
+  min-height: 30px;
+  font-size: 12px;
+}
+
+.ui-field__control:focus-visible {
+  border-color: var(--ui-accent);
+  outline: 2px solid color-mix(in srgb, var(--ui-accent) 42%, transparent);
+  outline-offset: 1px;
+}
+
+.ui-field__control:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+select.ui-field__control {
+  cursor: pointer;
+}
+
 .ui-icon-button {
   display: inline-grid;
   place-items: center;

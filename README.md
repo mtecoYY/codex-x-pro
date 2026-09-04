@@ -62,16 +62,38 @@
   <img src="docs/screenshots/app/new-ui/script-processors.png" alt="Codex-X-Pro 用户脚本处理器界面" width="920" />
 </p>
 
-### 4. 统一管理中心：Provider / 会话 / Prompts / Skills-MCP
+### 4. 网关层统一管理：Provider / 会话 / Prompts / Skills-MCP
 
-> [!TIP]
-> 这一部分把原来分散在多个配置文件、目录和列表里的常用能力收拢到一个桌面界面里。
+> [!IMPORTANT]
+> **网关模式下，Provider 和 Prompts 的修改会同步到网关运行时并直接生效。** 保存成功后，下一条请求即可使用新的供应商、模型、认证策略或提示词状态，不需要重启 Codex，也不需要重新打开当前 session。
 
-- Provider 支持新增、编辑、启用、删除、连接检测和模型获取
-- 会话支持同步、搜索、分组和清理
-- Prompts 支持分类、导入、编辑、启用 / 禁用和本地缓存
-- Skills / MCP 支持可视化查看、导入和管理
-- 日常操作尽量减少手改文件的次数，让配置集中在一个地方维护
+这一组页面不是单纯把配置集中显示，而是分别管理用户期望状态、会话路由和 Codex 本地扩展。网关可用时，Provider 与 Prompts 会先保存 Canonical State，再由运行时同步层投影到正在运行的网关；只有同步成功才会显示为已生效，网关不可用时会明确提示失败。
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <b>Provider / API</b><br />
+      新增、编辑、启用或删除供应商，填写 Base URL、API Key、Model、Wire API 和完整 TOML；保存前可检测连接并获取模型。网关模式下，当前 Provider、模型和认证策略会同步到网关运行时，后续请求直接沿用新配置。
+    </td>
+    <td width="50%" valign="top">
+      <b>Prompts</b><br />
+      按分类浏览、导入、编辑和启用 / 禁用提示词，并保留本地缓存。启用状态和提示词内容保存后会同步到网关运行时，下一条请求即可使用新的注入结果；不需要重启客户端或重开 session。
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <b>会话</b><br />
+      搜索、分组和检查本地 session，查看它们与当前 Provider / 模型是否一致，并在需要时一键同步会话路由。同步只调整会话使用的供应商配置，不修改聊天正文；删除操作仍作用于 Codex 自身的会话存储。
+    </td>
+    <td width="50%" valign="top">
+      <b>Skills / MCP</b><br />
+      可视化查看、导入和管理 Skill 与 MCP Server。启用 Skill 会写入 Codex skills 目录；启用或禁用 MCP 会维护 Codex 的 `config.toml`。这两类扩展按 Codex 原有加载路径生效，不额外宣称具备 Provider / Prompts 那样的网关运行时热更新。
+    </td>
+  </tr>
+</table>
+
+> [!NOTE]
+> 未启用网关、处于 direct 模式时，不存在网关运行时同步层；Provider、Prompts、会话和 Skills / MCP 会按照原 Codex 配置路径生效，是否需要重新加载由 Codex 本身决定。
 
 ### 5. 更新与安装：跨平台安装包和应用内升级
 

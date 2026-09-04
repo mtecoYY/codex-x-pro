@@ -140,16 +140,18 @@
 .cx-brand-title-row {
   display: flex;
   align-items: baseline;
-  gap: 7px;
 }
 
 .cx-brand h1 {
   margin: 0;
+  overflow: hidden;
   color: #181a1f;
-  font-size: 19px;
+  font-size: 18px;
   font-weight: 730;
   line-height: 1.2;
   letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cx-brand p {
@@ -165,10 +167,12 @@
 }
 
 .cx-app-version {
+  display: block;
+  margin-top: 4px;
   color: #969ba4;
   font-size: 11px;
   font-weight: 650;
-  line-height: 1;
+  line-height: 1.2;
 }
 
 .cx-sidebar-nav {

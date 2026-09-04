@@ -1,19 +1,104 @@
+# 基于 Codex-X 二开
+
+本项目基于 Codex-X 二次开发。下面先列出本软件新增功能，后面保留原软件功能说明（即当前 README 内容）。
+
+## 本软件新增功能
+
+### 1. 本地网关：启动、停止、接管与恢复
+
+> [!NOTE]
+> 这部分负责把 Codex 的请求接到本地可控转发层里，让网关状态、监听端口、上游地址和运行模式都能在界面里直接管理。
+
+- 一键启动、停止和刷新本地网关状态
+- 查看当前监听端口、运行模式、健康状态和上游配置
+- 支持 direct / gateway 两种模式切换，新会话按当前模式生效
+- 带有 watchdog 和运行意图，异常退出后可自动接管和恢复
+- 会对 live config.toml、auth.json 和运行态快照做投影与回滚，尽量减少对原环境的污染
+
+<p align="center">
+  <img src="docs/screenshots/app/new-ui/local-gateway.png" alt="Codex-X-Pro 本地网关管理界面" width="920" />
+</p>
+
+### 2. 实时请求观测：看见每一次请求和响应
+
+> [!TIP]
+> 适合排查请求是否真正发出、上游返回了什么、哪一段内容被截断或脱敏了。
+
+- 以有界队列记录请求和响应，默认保留 100 条，超出后自动淘汰旧记录
+- 支持暂停采集、清空记录、按序号查看单条请求和详情
+- 提供 SSE 实时刷新，断线后可继续补齐仍在保留窗口内的历史
+- 请求快照会脱敏 Authorization、Cookie、API Key 等敏感字段
+- 大正文会显示截断信息，便于判断上下文是否足够
+
+<div align="center">
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <b>观测记录</b><br />
+      <sub>按请求顺序查看状态码、模型、耗时、首字时间和 Tokens 状态</sub><br />
+      <img src="docs/screenshots/app/new-ui/request-observation.png" alt="Codex-X-Pro 实时请求观测记录" width="420" />
+    </td>
+    <td align="center" width="50%">
+      <b>请求详情 / 探针包</b><br />
+      <sub>在 raw-text、请求 JSON、响应 JSON 之间切换并查看脱敏后的详情</sub><br />
+      <img src="docs/screenshots/app/new-ui/request-detail.png" alt="Codex-X-Pro 请求详情和探针包" width="420" />
+    </td>
+  </tr>
+</table>
+</div>
+
+### 3. 用户脚本处理器：把网关链路做成可编排的脚本管道
+
+> [!NOTE]
+> 脚本以 raw-text 方式收发完整请求文本，适合做定制化改写、响应替换、丢弃或错误拦截。
+
+- 支持脚本发现、manifest 刷新、启用前测试和优先级串行执行
+- 脚本可以读取完整请求文本，并按需要修改 method、path、headers、正文和路由相关字段
+- 支持 forward、respond、drop、error 等处理结果，分别对应继续转发、直接返回、丢弃请求和报错
+- 脚本异常或返回格式不合法时会停止转发，并给出可读错误，便于定位问题
+- UI 会同步展示测试结果、启用状态和最近行为，便于维护多条脚本链
+
+<p align="center">
+  <img src="docs/screenshots/app/new-ui/script-processors.png" alt="Codex-X-Pro 用户脚本处理器界面" width="920" />
+</p>
+
+### 4. 统一管理中心：Provider / 会话 / Prompts / Skills-MCP
+
+> [!TIP]
+> 这一部分把原来分散在多个配置文件、目录和列表里的常用能力收拢到一个桌面界面里。
+
+- Provider 支持新增、编辑、启用、删除、连接检测和模型获取
+- 会话支持同步、搜索、分组和清理
+- Prompts 支持分类、导入、编辑、启用 / 禁用和本地缓存
+- Skills / MCP 支持可视化查看、导入和管理
+- 日常操作尽量减少手改文件的次数，让配置集中在一个地方维护
+
+### 5. 更新与安装：跨平台安装包和应用内升级
+
+- 提供 Windows、macOS 和 Linux 的安装包
+- 支持应用内下载、安装和升级
+- 安装后可直接进入软件，便于维护和分发
+
+## 原软件功能
+
+以下内容为当前 README 原文。
+
 <p align="center">
   <a href="README.md"><img src="https://img.shields.io/badge/中文-当前-blue" alt="中文" /></a>
   <a href="README.en.md"><img src="https://img.shields.io/badge/English-Switch-lightgrey" alt="English" /></a>
 </p>
 
 <div align="center">
-  <img src="apps/desktop/src-tauri/icons/icon.png" alt="Codex-X Logo" width="150" />
+  <img src="apps/desktop/src-tauri/icons/icon.png" alt="Codex-X-Pro Logo" width="150" />
 
-  # Codex-X
+  # Codex-X-Pro
 
   **Codex 可视化提示词注入 · Provider · 会话 · Skills / MCP 管理工具**
 
   一款面向 **OpenAI Codex 桌面端 / Codex CLI** 的跨平台桌面工具。把提示词模板、自定义 Prompt、第三方 API 供应商、会话同步、Skills / MCP 和 TOML 配置都放进可视化界面里，不用反复手改文件。
 
   <p>
-    <img src="https://img.shields.io/github/v/release/yynxxxxx/Codex-X?label=version&color=blue" alt="version" />
+    <img src="https://img.shields.io/github/v/release/mtecoYY/codex-x-pro?label=version&color=blue" alt="version" />
     <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-555" alt="platform" />
     <img src="https://img.shields.io/badge/built%20with-Tauri%202-24C8DB" alt="tauri" />
     <img src="https://img.shields.io/badge/license-MIT-green" alt="license" />
@@ -30,9 +115,9 @@
 
 ---
 
-## Codex-X 是什么？
+## Codex-X-Pro 是什么？
 
-当你同时使用 Codex 桌面端、CLI、第三方 API、Skills / MCP 和多套提示词时，配置很容易散落在不同文件里。Codex-X 把这些高频操作集中到一个桌面界面中，让当前状态看得见、常用操作点一下就能完成。
+当你同时使用 Codex 桌面端、CLI、第三方 API、Skills / MCP 和多套提示词时，配置很容易散落在不同文件里。Codex-X-Pro 把这些高频操作集中到一个桌面界面中，让当前状态看得见、常用操作点一下就能完成。
 
 你可以用它：
 
@@ -48,7 +133,7 @@
 <summary><b>新版 UI：指令提示词管理中心</b></summary>
 
 <p align="center">
-  <img src="docs/screenshots/app/new-ui/prompts.png" alt="Codex-X 新版指令提示词管理界面" width="920" />
+  <img src="docs/screenshots/app/new-ui/prompts.png" alt="Codex-X-Pro 新版指令提示词管理界面" width="920" />
 </p>
 
 </details>
@@ -59,12 +144,12 @@
     <td align="center" width="50%">
       <b>分类管理</b><br />
       <sub>把提示词按破甲 / 逆向、软件开发、写作辅助等分类维护</sub><br />
-      <img src="docs/screenshots/app/new-ui/prompt-categories.png" alt="Codex-X 提示词分类管理" width="420" />
+      <img src="docs/screenshots/app/new-ui/prompt-categories.png" alt="Codex-X-Pro 提示词分类管理" width="420" />
     </td>
     <td align="center" width="50%">
       <b>自定义提示词</b><br />
       <sub>直接添加、编辑或导入自己的 Markdown 提示词</sub><br />
-      <img src="docs/screenshots/app/new-ui/prompt-form.png" alt="Codex-X 添加自定义提示词" width="420" />
+      <img src="docs/screenshots/app/new-ui/prompt-form.png" alt="Codex-X-Pro 添加自定义提示词" width="420" />
     </td>
   </tr>
 </table>
@@ -74,7 +159,7 @@
 <summary><b>Skills / MCP 可视化管理</b></summary>
 
 <p align="center">
-  <img src="docs/screenshots/app/new-ui/skills-mcp.png" alt="Codex-X Skills 与 MCP 管理界面" width="920" />
+  <img src="docs/screenshots/app/new-ui/skills-mcp.png" alt="Codex-X-Pro Skills 与 MCP 管理界面" width="920" />
 </p>
 
 </details>
@@ -85,7 +170,7 @@
 <table>
   <tr>
     <th align="center" width="190">你想做的事</th>
-    <th align="center">Codex-X 能帮你</th>
+    <th align="center">Codex-X-Pro 能帮你</th>
   </tr>
   <tr>
     <td align="center"><b>提示词注入管理</b></td>
@@ -134,7 +219,7 @@
 >
 > 安装包离线自带 5 套模板；软件启动后会从 GitHub `examples/` 同步另外 6 套软件开发与写作辅助模板，以及后续更新。同步成功的在线版本会缓存到本地，临时离线仍可继续使用。你也可以导入自己的 `.md`、新增分类、编辑说明，并像切换插件一样启用或禁用任意提示词。
 
-Codex-X 现在不只是“几套内置 Prompt”的启动器，而是一个可视化提示词注入与管理工具：
+Codex-X-Pro 现在不只是“几套内置 Prompt”的启动器，而是一个可视化提示词注入与管理工具：
 
 - 按分类管理提示词，例如破甲 / 逆向、软件开发、写作辅助，也可以新增自己的分类
 - 支持同步 GitHub 模板、导入 Markdown、手动添加提示词、编辑标题 / 文件名 / 内容
@@ -211,7 +296,7 @@ Codex-X 现在不只是“几套内置 Prompt”的启动器，而是一个可�
   <tr>
     <td width="50%" valign="top">
       <b>保留原提示词</b><br />
-      适合已经有个人规则的用户。Codex-X 只追加自己管理的内容，禁用时也只移除这一部分，不动原有提示词。
+      适合已经有个人规则的用户。Codex-X-Pro 只追加自己管理的内容，禁用时也只移除这一部分，不动原有提示词。
     </td>
     <td width="50%" valign="top">
       <b>替换原提示词</b><br />
@@ -223,7 +308,7 @@ Codex-X 现在不只是“几套内置 Prompt”的启动器，而是一个可�
 每次启用或禁用前都会自动创建备份。除了模板库，你也可以导入、编辑、删除自己的 `.md` 提示词，并通过分类管理把常用提示词整理成自己的工作流。
 
 > [!NOTE]
-> 如果你有好用的提示词模板，欢迎在 [Issues](https://github.com/yynxxxxx/Codex-X/issues) 提交：请附上模板名称、适用场景、Markdown 内容、推荐启用方式和必要说明。合适的模板会考虑收录到 `examples/`，让更多用户可以一键同步使用。
+> 如果你有好用的提示词模板，欢迎在 [Issues](https://github.com/mtecoYY/codex-x-pro/issues) 提交：请附上模板名称、适用场景、Markdown 内容、推荐启用方式和必要说明。合适的模板会考虑收录到 `examples/`，让更多用户可以一键同步使用。
 
 ### 2. Provider / API：添加、检测、获取模型、随时切换
 
@@ -272,7 +357,7 @@ Codex-X 现在不只是“几套内置 Prompt”的启动器，而是一个可�
     </td>
     <td width="50%" valign="top">
       <b>MCP</b><br />
-      导入前先预览现有 MCP Server，再决定哪些需要纳管；启用或禁用后由 Codex-X 自动维护 Codex 配置。
+      导入前先预览现有 MCP Server，再决定哪些需要纳管；启用或禁用后由 Codex-X-Pro 自动维护 Codex 配置。
     </td>
   </tr>
 </table>
@@ -291,8 +376,8 @@ Codex-X 现在不只是“几套内置 Prompt”的启动器，而是一个可�
 ### 6. 逆向 Skills 导航
 
 <div align="center">
-  <a href="https://yynxxxxx.github.io/Codex-X/">
-    <img src="https://img.shields.io/badge/Codex--X-在线逆向%20Skills%20导航-0ea5e9?style=for-the-badge&logo=githubpages&logoColor=white" alt="Codex-X 在线逆向 Skills 导航" />
+  <a href="https://yynxxxxx.github.io/Codex-X-Pro/">
+    <img src="https://img.shields.io/badge/Codex--X--Pro-在线逆向%20Skills%20导航-0ea5e9?style=for-the-badge&logo=githubpages&logoColor=white" alt="Codex-X-Pro 在线逆向 Skills 导航" />
   </a>
 </div>
 
@@ -301,7 +386,7 @@ Codex-X 现在不只是“几套内置 Prompt”的启动器，而是一个可�
 <table>
   <tr>
     <td width="55%">
-      <b>在线教程页</b>：解释什么是“破甲”、Codex-X 如何启用 GPT-5.5 / unrestricted jeli、以及如何搭配不同领域的逆向 Skills。
+      <b>在线教程页</b>：解释什么是“破甲”、Codex-X-Pro 如何启用 GPT-5.5 / unrestricted jeli、以及如何搭配不同领域的逆向 Skills。
       <br /><br />
       <b>分类覆盖</b>：Android APK / Windows EXE / Web 协议逆向。
       <br /><br />
@@ -320,8 +405,8 @@ Codex-X 现在不只是“几套内置 Prompt”的启动器，而是一个可�
 </table>
 
 <p align="center">
-  <a href="https://yynxxxxx.github.io/Codex-X/">
-    <b>🚀 打开 Codex-X 逆向 Skills 导航</b>
+  <a href="https://yynxxxxx.github.io/Codex-X-Pro/">
+    <b>🚀 打开 Codex-X-Pro 逆向 Skills 导航</b>
   </a>
 </p>
 
@@ -348,7 +433,7 @@ Codex-X 现在不只是“几套内置 Prompt”的启动器，而是一个可�
 
 ## 配置路径
 
-Codex-X 默认读取 Codex 配置目录：
+Codex-X-Pro 默认读取 Codex 配置目录：
 
 ```text
 ~/.codex/config.toml
@@ -359,11 +444,11 @@ Codex-X 默认读取 Codex 配置目录：
 
 ```text
 CODEX_HOME=/path/to/.codex
-CODEXX_HOME=/path/to/codex-x-data
+CODEXX_HOME=/path/to/codex-x-pro-data
 CC_SWITCH_HOME=/path/to/.cc-switch
 ```
 
-Codex-X 自身数据库默认位于：
+Codex-X-Pro 自身数据库默认位于：
 
 ```text
 ~/.codexx/codexx.db
@@ -373,7 +458,7 @@ Codex-X 自身数据库默认位于：
 
 请前往 Releases 页面下载：
 
-https://github.com/yynxxxxx/Codex-X/releases
+https://github.com/mtecoYY/codex-x-pro/releases
 
 ## 开发运行
 
@@ -396,12 +481,12 @@ pnpm --dir apps/desktop tauri build
 - 仅本地测试：可手动移除 quarantine 属性
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/Codex-X.app
+xattr -dr com.apple.quarantine /Applications/Codex-X-Pro.app
 ```
 
 ## 许可证
 
-本项目基于 [MIT License](https://github.com/yynxxxxx/Codex-X/blob/main/LICENSE) 开源。
+本项目基于 [MIT License](https://github.com/mtecoYY/codex-x-pro/blob/main/LICENSE) 开源。
 
 ## 致谢 / Thanks
 
@@ -410,11 +495,11 @@ xattr -dr com.apple.quarantine /Applications/Codex-X.app
 ## Star History
 
 <p align="center">
-  <a href="https://github.com/yynxxxxx/Codex-X/stargazers">
+  <a href="https://github.com/mtecoYY/codex-x-pro/stargazers">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://codex-star-history.zhihack0728.workers.dev/v1/charts/codex-x.svg?theme=dark" />
-      <source media="(prefers-color-scheme: light)" srcset="https://codex-star-history.zhihack0728.workers.dev/v1/charts/codex-x.svg?theme=light" />
-      <img alt="Codex-X Star History" src="https://codex-star-history.zhihack0728.workers.dev/v1/charts/codex-x.svg?theme=light" width="900" />
+      <source media="(prefers-color-scheme: dark)" srcset="https://codex-star-history.zhihack0728.workers.dev/v1/charts/codex-x-pro.svg?theme=dark" />
+      <source media="(prefers-color-scheme: light)" srcset="https://codex-star-history.zhihack0728.workers.dev/v1/charts/codex-x-pro.svg?theme=light" />
+      <img alt="Codex-X-Pro Star History" src="https://codex-star-history.zhihack0728.workers.dev/v1/charts/codex-x-pro.svg?theme=light" width="900" />
     </picture>
   </a>
 </p>

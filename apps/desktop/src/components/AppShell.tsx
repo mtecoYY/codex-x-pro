@@ -141,10 +141,10 @@ export function AppShell({
           <div className="cx-brand-mark" aria-hidden="true">X</div>
           <div className="cx-brand-copy">
             <div className="cx-brand-title-row">
-              <h1>Codex-X</h1>
-              {appVersion && <span className="cx-app-version">v{appVersion.replace(/^v/i, "")}</span>}
+              <h1>Codex-X-Pro</h1>
             </div>
             <p>{lang === "zh" ? "切换 · 指令 · 配置" : "Switch · Instruct · Config"}</p>
+            {appVersion && <span className="cx-app-version">v{appVersion.replace(/^v/i, "")}</span>}
           </div>
           {updateActionState && onOpenUpdate && (
             <IconButton

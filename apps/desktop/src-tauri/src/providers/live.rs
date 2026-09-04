@@ -1004,7 +1004,7 @@ fn merge_provider_toml_into_live(
 
     // New and cc-switch imports carry a complete provider config. Treat it as
     // authoritative so provider-specific desktop/features/plugin settings make
-    // the round trip. Older Codex-X records contained only the route/model;
+    // the round trip. Older Codex-X-Pro records contained only the route/model;
     // those sparse templates inherit the current common settings for backward
     // compatibility.
     let has_multiple_provider_tables = source
@@ -1123,7 +1123,7 @@ where
         return Err(CodexxError::Config("供应商 ID 不能为空".to_string()));
     }
     // CC Switch uses a stable live key for all third-party providers. The
-    // logical saved id remains in Codex-X storage and is matched by backend.
+    // logical saved id remains in Codex-X-Pro storage and is matched by backend.
     let live_provider_key = "custom";
     let base_url = input.base_url.trim().trim_end_matches('/');
     let model = input.model.trim();
@@ -2233,7 +2233,7 @@ command = "docs-server"
         let error = acquire_live_config_lock(&codex_dir)
             .err()
             .expect("second live lock must fail");
-        assert!(error.to_string().contains("另一个 Codex-X"));
+        assert!(error.to_string().contains("另一个 Codex-X-Pro"));
         drop(first);
         acquire_live_config_lock(&codex_dir).expect("lock is released on drop");
 

@@ -489,7 +489,7 @@ fn download_repo_skill_hashes(
         .build();
     let response = agent
         .get(&url)
-        .set("User-Agent", "Codex-X")
+        .set("User-Agent", "Codex-X-Pro")
         .call()
         .map_err(|e| format!("下载 {owner}/{repo}@{branch} 失败: {e}"))?;
     let mut bytes = Vec::new();

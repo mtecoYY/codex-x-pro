@@ -1,4 +1,4 @@
-# Codex-X 项目维护日志
+# Codex-X-Pro 项目维护日志
 
 本文件记录面向维护者的根因、设计决策、验证依据和遗留风险。它与
 `CHANGELOG.md` 分工如下：
@@ -15,7 +15,7 @@
 - 新建和 CC Switch 导入的供应商保存完整、无密钥的 TOML 模板；API Key 单独保存在供应商
   数据库字段中。完整模板是该供应商的权威配置，切换时恢复项目、插件、MCP、桌面、功能和
   环境设置；旧版稀疏模板仍以当前 live 配置为底稿兼容合并。
-- 官方 OAuth 只保存在 Codex-X 的独立可信快照和官方 live `auth.json` 中。切换第三方时，
+- 官方 OAuth 只保存在 Codex-X-Pro 的独立可信快照和官方 live `auth.json` 中。切换第三方时，
   live `auth.json` 改写为只含 `OPENAI_API_KEY` 的第三方认证；第三方 TOML 不保留
   `auth_mode` 或 `experimental_bearer_token`，切回官方时再恢复完整官方认证。
 - 官方配置独立保存完整 `config.toml`、模型和 OAuth/API Key `auth.json`。官方与第三方往返
@@ -27,23 +27,23 @@
   认证快照。完整官方 TOML 是模型字段的权威源，独立模型输入只补齐缺失值。
 - 启动状态读取不得迁移提示词、修改文件权限、捕获认证或扫描历史备份；概览在结果返回前显示
   “正在读取”，失败后显示“读取失败”。
-- Codex-X 内部数据库使用持久 `user_version`。已升级数据库的普通打开只读版本号；迁移、历史
+- Codex-X-Pro 内部数据库使用持久 `user_version`。已升级数据库的普通打开只读版本号；迁移、历史
   清理和版本更新在同一个 `BEGIN IMMEDIATE` 事务完成，失败可重试，同路径替换后可重新初始化。
 - Codex 版本探测在 blocking worker 中执行，固定候选先探测，目录候选流式探测，所有阶段共享
   同一个总 deadline，避免 Windows 慢盘或重定向用户目录拖住启动。
 - 对照 CC Switch `076c2744ceb622b85771bff57668d43ed70809f8` 的完整 provider config 和
   默认 `preserveCodexOfficialAuthOnSwitch = false` 路径：第三方认证直接写入 `auth.json`。
   `95f2dd41262f01209100128ea647dbd054b5624a` 的 OAuth + provider-scoped bearer 行为仅作为
-  兼容策略参考，不再作为 Codex-X 默认切换语义；
-  Codex-X 额外保留官方独立快照、live 配置并发检查与条件原子回滚。本节决策替代 2026-07-29
+  兼容策略参考，不再作为 Codex-X-Pro 默认切换语义；
+  Codex-X-Pro 额外保留官方独立快照、live 配置并发检查与条件原子回滚。本节决策替代 2026-07-29
   中关于第三方 bearer token 和模板激活的旧约束。
 
 ## 2026-07-30：live 配置并发与失败回滚
 
 ### 已确认根因
 
-Codex-X 的供应商、提示词、备份恢复和状态刷新曾各自读写 `config.toml`。即使每次
-写出的内容都是合法 TOML，只要 Codex、CC Switch 或另一条 Codex-X 操作在“读取旧值”和
+Codex-X-Pro 的供应商、提示词、备份恢复和状态刷新曾各自读写 `config.toml`。即使每次
+写出的内容都是合法 TOML，只要 Codex、CC Switch 或另一条 Codex-X-Pro 操作在“读取旧值”和
 “整文件替换”之间更新配置，后写入者就会覆盖前一个新值。多文件操作在中途失败时还可能
 留下 config、auth、AGENTS 或应用数据库互不对应的混合状态。
 
@@ -67,7 +67,7 @@ Codex-X 的供应商、提示词、备份恢复和状态刷新曾各自读写 `c
 
 ### 问题
 
-Codex-X 原先没有系统托盘和窗口关闭事件处理。用户点击主窗口关闭按钮后，
+Codex-X-Pro 原先没有系统托盘和窗口关闭事件处理。用户点击主窗口关闭按钮后，
 Tauri 事件循环随最后一个窗口关闭而结束，后台管理能力也随之退出。
 
 首版修复只调用了 `window.hide()`。这可以保留进程和窗口状态，但 macOS 应用仍是
@@ -80,8 +80,8 @@ Tauri 事件循环随最后一个窗口关闭而结束，后台管理能力也�
   `Regular`。这两项都执行，避免不同 macOS 版本残留 Dock 图标。
 - Windows 关闭时显式启用 `skip_taskbar`，恢复时关闭，避免隐藏窗口仍占用任务栏。
 - macOS 左键点击顶部栏图标打开菜单；Windows 左键点击托盘图标直接恢复窗口。
-- 选择“显示 Codex-X”会恢复、取消最小化并聚焦原主窗口。
-- 托盘菜单始终提供“退出 Codex-X”，用于明确结束后台进程。
+- 选择“显示 Codex-X-Pro”会恢复、取消最小化并聚焦原主窗口。
+- 托盘菜单始终提供“退出 Codex-X-Pro”，用于明确结束后台进程。
 - macOS 再次点击 Dock 图标时也恢复已经隐藏的主窗口。
 - 不拦截应用级退出或更新器的显式重启，保证退出菜单、`Cmd+Q` 和安装更新仍可结束进程。
 
@@ -90,7 +90,7 @@ Tauri 事件循环随最后一个窗口关闭而结束，后台管理能力也�
 对照 CC Switch `56fb46c09310ff52dabefd2b32f0e799e8357d9e` 的
 `src-tauri/src/lib.rs` 和 `src-tauri/src/tray.rs`：其 Windows 路径使用
 `set_skip_taskbar`，macOS 路径同时使用 `set_dock_visibility` 和
-`set_activation_policy`。Codex-X 复用相同的平台生命周期规则，但保留自己的简化托盘菜单。
+`set_activation_policy`。Codex-X-Pro 复用相同的平台生命周期规则，但保留自己的简化托盘菜单。
 
 ### 验证
 
@@ -100,7 +100,7 @@ Tauri 事件循环随最后一个窗口关闭而结束，后台管理能力也�
 - macOS 本机包实测：窗口显示时 Launch Services 类型为 `Foreground`；点击关闭按钮后
   主窗口消失、PID 保持不变，类型切换为 `UIElement`。这证明应用已从 Dock 模式进入仅
   顶部栏驻留模式；再次激活后同一 PID 恢复为 `Foreground`，配置数据正常加载。
-- `Cmd+H` 后可以恢复同一进程；`Cmd+Q` 和托盘“退出 Codex-X”仍用于真正结束进程。
+- `Cmd+H` 后可以恢复同一进程；`Cmd+Q` 和托盘“退出 Codex-X-Pro”仍用于真正结束进程。
 - 本机 Windows 交叉编译在第三方依赖 `ring` 阶段因缺少 MSVC C 头文件停止，尚未进入
   项目代码；发布前仍须以 GitHub Windows Actions 的原生构建结果为准。
 

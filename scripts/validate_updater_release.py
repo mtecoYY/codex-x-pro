@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate Codex-X updater metadata before a draft release is published."""
+"""Validate Codex-X-Pro updater metadata before a draft release is published."""
 
 from __future__ import annotations
 

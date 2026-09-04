@@ -1,4 +1,4 @@
-# Codex-X 本地网关旁路测试方案
+# Codex-X-Pro 本地网关旁路测试方案
 
 > 本文同时是网关功能的测试规范和发布门禁。文档中标记为“自动化”的项目必须有可重复执行的测试入口；只通过编译、Rust 内部函数测试、前端纯函数测试或 Python HTTP 测试，不能宣称桌面网关功能通过。
 
@@ -270,7 +270,7 @@ agent 应按以下顺序执行，并在报告中记录每一步结果：
 - 过滤 hop-by-hop、`Expect` 和原始 `Content-Length`；`Host` 保留用户脚本的最终值；
 - 非 JSON 或无法解析的正文透传。
 
-当前脚本已提供 `/health`、`/state`、`/observe/*`、`/scripts/*` 控制接口、运行时 Provider/提示词同步、脱敏快照、有界观测队列和用户脚本协议。Codex-X Rust 控制层负责启动/停止网关、写入本地 `base_url` 投影、保存快照并在关闭时做冲突校验和原子恢复。实时页面仍需在独立集成环境中验证 UI 灰化、端口迁移和 Windows 计划任务行为；本方案的旁路测试不能替代这些测试。
+当前脚本已提供 `/health`、`/state`、`/observe/*`、`/scripts/*` 控制接口、运行时 Provider/提示词同步、脱敏快照、有界观测队列和用户脚本协议。Codex-X-Pro Rust 控制层负责启动/停止网关、写入本地 `base_url` 投影、保存快照并在关闭时做冲突校验和原子恢复。实时页面仍需在独立集成环境中验证 UI 灰化、端口迁移和 Windows 计划任务行为；本方案的旁路测试不能替代这些测试。
 
 用户脚本处理器协议（脚本发现、raw-text 输入/输出、退出码控制、测试门禁、优先级链和脚本异常观测）已具备隔离运行测试；不得把真实上游探针结果当作协议测试结果。
 
@@ -599,10 +599,10 @@ config.toml：字节级摘要与测试前一致
 4. 应用闪退/强制终止：在网关运行后终止应用进程但保留 `gateway-mode/state.json`、`runtime-state.json` 和 watchdog intent，重新启动应用时确认能通过 `/state` 的 `process_id` 识别并重新接管现有网关；若网关已崩溃且 intent 仍为 gateway，确认启动初始化按持久化 Provider 上游重拉一次并等待健康检查。
 5. 外部占用保护：启动恢复时若端口健康响应的 `state`、loopback `listen` 或 `process_id` 与持久化快照不匹配，确认返回 `GATEWAY_PORT_IN_USE`/`DISABLE_STATE_UNAVAILABLE`，不终止未知进程、不覆盖 live 文件。
 6. 看门狗崩溃循环：让网关连续异常退出，确认达到重启上限后看门狗退出并记录最近退出信息；将 intent 改为 `direct` 或 `watchdog_desired=false` 后确认不会再次拉起。
-7. 显式退出与重启：通过托盘“退出 Codex-X”和应用重启入口触发 `RunEvent::ExitRequested`，确认只退出 Codex-X，watchdog intent、watchdog、网关 PID、live gateway 配置和模式快照均保留；再次启动后确认可重新接管。
+7. 显式退出与重启：通过托盘“退出 Codex-X-Pro”和应用重启入口触发 `RunEvent::ExitRequested`，确认只退出 Codex-X-Pro，watchdog intent、watchdog、网关 PID、live gateway 配置和模式快照均保留；再次启动后确认可重新接管。
 8. 设置与抓包持久化边界：修改 `capture_limit`、Provider、提示词和脚本启用状态后重启临时网关，确认设置恢复；启动采集并生成记录后重启网关，确认 `capture_enabled=false`、记录/详情/序号/计数清空，而 `capture_limit` 保留。主窗口关闭到托盘期间记录继续增加；显式退出、卡退或强杀后不得从状态文件恢复抓包正文。
 9. 正常停止状态：显式停止事务成功、模式快照已删除且临时端口不再监听后，再次查询进程状态必须得到 `running=false`、`degraded=false`、`error=null`；页面显示 stopped，不出现 `CONTROL_API_UNAVAILABLE`。
-10. 预期运行但失联：保留 `desired_mode=gateway` 或 Codex-X 管理的存活子进程，并使 `/state` 不可达，确认返回 `degraded=true` 且错误包含 `CONTROL_API_UNAVAILABLE`；不得误报为正常 stopped。
+10. 预期运行但失联：保留 `desired_mode=gateway` 或 Codex-X-Pro 管理的存活子进程，并使 `/state` 不可达，确认返回 `degraded=true` 且错误包含 `CONTROL_API_UNAVAILABLE`；不得误报为正常 stopped。
 11. 持久化降级优先级：同时制造 `degraded.json` 恢复错误和 `/state` 连接失败，确认页面优先展示持久化恢复错误，避免瞬时探测错误覆盖根因。
 
 已自动化覆盖：外部本地看门狗测试（5 项看门狗生命周期测试，含非法 intent 安全退出和无 intent 的个人看门狗模式）以及 Rust `gateway::tests` 中的持久身份校验、启动无快照、启动恢复、句柄丢失后接管、退出无快照、正常 stopped 不生成控制面错误、预期运行但失联进入 degraded、持久化 degraded 错误优先级、任务 XML 隐藏/登录/重启配置、长 action 参数、UTF-16LE 编码和开启失败状态回滚测试。前端组件测试同时覆盖正常停止后不显示 `CONTROL_API_UNAVAILABLE`，以及 degraded 失联仍显示错误。Windows 还提供一条默认忽略的隔离集成测试 `windows_schtasks_accepts_generated_watchdog_xml`：它使用唯一临时任务名执行真实“创建旧任务 -> 导出快照 -> 覆盖新任务 -> 恢复旧任务 -> 查询验证 -> 删除”闭环，不运行 action，也不触碰生产任务。窗口托盘交互、真实 Tauri `ExitRequested` 事件、Windows 终止信号和安装包登录自启动仍需目标 Windows 环境人工验收。
@@ -682,7 +682,7 @@ config.toml：字节级摘要与测试前一致
 应用版本和安装包 SHA-256
 测试端口和所有测试进程 PID
 Tauri command 名称及 payload shape，不记录 body 敏感内容
-项目任务 Codex-X Local Gateway 的 State/LastTaskResult
+项目任务 Codex-X-Pro Local Gateway 的 State/LastTaskResult
 个人任务 Codex Responses Repair Gateway 的 State 是否保持不变
 8787 前后 PID
 config.toml 前后 SHA-256
@@ -734,7 +734,7 @@ Windows Event Viewer/WER 是否新增崩溃
 - 关闭网关后的配置回写、端口迁移和旧 session 缓存提示；
 - Rust 启动事务的 live `config.toml` 原子投影、提示词字段移除/恢复、状态快照丢失和外部修改冲突。
 
-这些测试必须使用独立配置目录、独立端口和独立计划任务名称，不能复用个人外部工具任务 `Codex Responses Repair Gateway`，也不能复用项目任务 `Codex-X Local Gateway`。
+这些测试必须使用独立配置目录、独立端口和独立计划任务名称，不能复用个人外部工具任务 `Codex Responses Repair Gateway`，也不能复用项目任务 `Codex-X-Pro Local Gateway`。
 
 ## 5. 记录格式与证据
 

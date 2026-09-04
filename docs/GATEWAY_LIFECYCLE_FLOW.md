@@ -1,11 +1,11 @@
-# Codex-X 进入与退出工作流
+# Codex-X-Pro 进入与退出工作流
 
 这份图把软件从启动、接收请求、关闭窗口、显式退出到异常恢复的路径放在一起。网关相关状态以持久化文件和实际 `/state` 健康响应为准，页面状态不能单独代表运行状态。
 
 ## 总树状流程
 
 ```text
-Codex-X 进程
+Codex-X-Pro 进程
 ├─ 进入：程序启动
 │  ├─ Tauri single-instance 检查
 │  │  ├─ 已有实例：唤醒原主窗口，当前进程不重复初始化
@@ -17,9 +17,9 @@ Codex-X 进程
 │  │  │  └─ 保持直连，不恢复网关
 │  │  └─ state.json 的 desired_mode = gateway
 │  │     ├─ 保留/重写 watchdog intent 为 gateway + watchdog_desired=true
-│  │     ├─ 确保唯一的项目 Windows 登录任务 Codex-X Local Gateway 已启用
+│  │     ├─ 确保唯一的项目 Windows 登录任务 Codex-X-Pro Local Gateway 已启用
 │  │     ├─ /state 健康且 state/listen/process_id 与快照匹配
-│  │     │  ├─ 识别为当前 Codex-X 网关，重新接管进程
+│  │     │  ├─ 识别为当前 Codex-X-Pro 网关，重新接管进程
 │  │     │  └─ 确保 watchdog 任务正在运行
 │  │     ├─ 端口有响应但身份不匹配
 │  │     │  └─ 返回 GATEWAY_PORT_IN_USE，绝不终止未知进程
@@ -54,7 +54,7 @@ Codex-X 进程
 │  ├─ prevent_close()
 │  ├─ 隐藏主窗口并移出任务栏
 │  └─ 进程、网关、watchdog 和网关快照继续保留
-│     └─ 托盘“显示 Codex-X”或再次激活：恢复窗口并继续使用
+│     └─ 托盘“显示 Codex-X-Pro”或再次激活：恢复窗口并继续使用
 │
 ├─ 离开：托盘退出 / 应用重启
 │  ├─ Tauri 触发 RunEvent::ExitRequested
@@ -62,14 +62,14 @@ Codex-X 进程
 │  ├─ 不删除 watchdog intent
 │  ├─ 不停止 watchdog 或 gateway
 │  ├─ 不恢复 direct 配置，也不删除网关模式快照
-│  └─ 只允许 Codex-X 管理进程退出；网关状态继续由独立组件维持
+│  └─ 只允许 Codex-X-Pro 管理进程退出；网关状态继续由独立组件维持
 │
 └─ 异常离开：程序卡退 / 被强制终止 / 操作系统杀进程
    ├─ Tauri 退出钩子可能来不及执行
    ├─ gateway-mode/state.json、runtime-state.json 和 intent 保留
    ├─ watchdog intent 仍为 gateway + watchdog_desired=true
    │  └─ 独立看门狗继续监控并按上限重启网关
-   └─ 用户再次启动 Codex-X
+   └─ 用户再次启动 Codex-X-Pro
       └─ 回到“进入：程序启动”的初始化恢复分支
 ```
 
@@ -82,9 +82,9 @@ Codex-X 进程
    ├─ 不删除快照
    └─ 可从托盘恢复
 
-托盘“退出 Codex-X”或应用重启
+托盘“退出 Codex-X-Pro”或应用重启
 └─ ExitRequested
-   └─ 保持 gateway 状态并允许 Codex-X 退出/重启
+   └─ 保持 gateway 状态并允许 Codex-X-Pro 退出/重启
       ├─ watchdog intent 保留
       ├─ watchdog 和 gateway 继续运行
       └─ 下次启动时重新接管或恢复网关

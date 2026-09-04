@@ -71,7 +71,7 @@ fn migrate_schema(
         .map_err(|error| CodexxError::Database(error.to_string()))?;
 
     let migration = (|| {
-        // Another Codex-X process may have completed the migration while this
+        // Another Codex-X-Pro process may have completed the migration while this
         // connection waited for SQLite's write lock.
         if !schema_is_current(conn)? {
             initialize(conn)?;
@@ -127,7 +127,7 @@ fn ensure_sqlite_column(
         Err(e) => {
             let message = e.to_string().to_ascii_lowercase();
             if message.contains("duplicate column") || message.contains("duplicate column name") {
-                // Another running Codex-X process may have applied the same
+                // Another running Codex-X-Pro process may have applied the same
                 // lightweight migration between our PRAGMA check and ALTER.
                 Ok(())
             } else {
@@ -426,7 +426,7 @@ mod tests {
 
         for _ in 0..2 {
             let path = path.clone();
-            // Separate initializers model independent Codex-X processes; the
+            // Separate initializers model independent Codex-X-Pro processes; the
             // SQLite transaction and persistent version still permit one run.
             let initializer = DatabaseInitializer::new();
             let attempts = Arc::clone(&attempts);

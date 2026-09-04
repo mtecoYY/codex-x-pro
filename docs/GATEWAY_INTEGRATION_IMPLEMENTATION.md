@@ -1,8 +1,8 @@
-# Codex-X 本地网关集成实施方案
+# Codex-X-Pro 本地网关集成实施方案
 
 ## 1. 文档目的
 
-本文定义 Codex-X 与本地 Responses 网关的集成方案，覆盖：
+本文定义 Codex-X-Pro 与本地 Responses 网关的集成方案，覆盖：
 
 - 网关总开关；
 - 监听地址和端口配置；
@@ -44,7 +44,7 @@ wire_api = "responses"
 Codex -> 127.0.0.1:8787 -> Python 网关 -> https://newapi.gogogogoapp.mom
 ```
 
-现有链路中的 Python 网关是当前用户自己的独立工具，不是 Codex-X 仓库中的业务模块。Codex-X
+现有链路中的 Python 网关是当前用户自己的独立工具，不是 Codex-X-Pro 仓库中的业务模块。Codex-X-Pro
 负责启动、停止、接管、恢复和调用这个外部进程；实际的 HTTP 监听、上游转发和网关运行时逻辑由外部个人工具完成。
 
 ### 2.1 项目代码、个人网关和个人插件的边界
@@ -53,17 +53,17 @@ Codex -> 127.0.0.1:8787 -> Python 网关 -> https://newapi.gogogogoapp.mom
 
 | 对象 | 所有权和位置 | 负责内容 | 是否随项目发布 |
 | --- | --- | --- | --- |
-| Codex-X 网关控制层 | 仓库内，主要是 `apps/desktop/src-tauri/src/gateway.rs` | 网关/直连模式切换、live `config.toml` 投影与恢复、持久化状态、watchdog intent、Windows 登录自启动、外部进程生命周期和控制 API 转发 | 是 |
+| Codex-X-Pro 网关控制层 | 仓库内，主要是 `apps/desktop/src-tauri/src/gateway.rs` | 网关/直连模式切换、live `config.toml` 投影与恢复、持久化状态、watchdog intent、Windows 登录自启动、外部进程生命周期和控制 API 转发 | 是 |
 | 外部个人网关工具 | 本机用户私有目录 `~/.codex-x/personal-gateway/`；也可由 `CODEX_X_GATEWAY_SCRIPT` 和 `CODEX_X_GATEWAY_WATCHDOG` 指定 | 本地 HTTP 监听、Responses 请求转发、上游连接、网关运行时状态和 watchdog 实际执行 | 否 |
 | 个人用户插件 | 本机用户脚本目录 `~/.codex-x/gateway-tools/<script-id>/`，由用户自行安装或维护 | 对 raw-text 请求执行个人定制处理，例如 tool-call ID 修复；遵循 manifest、测试、启用、priority、超时和失败阻断规则 | 否 |
 
 这里的“用户脚本处理器”是项目允许外部个人网关提供的插件协议和管理界面，不表示
-Codex-X 内置了一份特定脚本。项目代码可以通过控制 API 请求外部网关发现、测试、启用、
+Codex-X-Pro 内置了一份特定脚本。项目代码可以通过控制 API 请求外部网关发现、测试、启用、
 禁用和排序用户脚本，但项目不拥有这些脚本的具体内容，也不应把个人脚本复制到仓库、
 安装包或普通用户可见的内置资源中。
 
 原先位于仓库 `scripts/codex_responses_repair_gateway.py` 的文件属于第二类“外部个人网关工具”，
-不是第一类“Codex-X 网关控制层”。它及其 watchdog 应放在用户私有的
+不是第一类“Codex-X-Pro 网关控制层”。它及其 watchdog 应放在用户私有的
 `C:\Users\<user>\.codex-x\personal-gateway\` 目录中。若该文件中的 tool-call ID 修复逻辑
 继续使用，则应作为第三类“个人用户插件”维护；该逻辑不是网关控制层的内置后置处理。
 
@@ -83,13 +83,13 @@ Codex-X 内置了一份特定脚本。项目代码可以通过控制 API 请求�
 目标 ID 改为 `ctc_*`，普通 `function_call` 保持不变。两种状态由隔离 E2E 分别验证，不能用
 个人网关本体的隐藏后置处理代替插件。
 
-Codex-X 现有 Provider 操作主要通过修改 `config.toml` 和 `auth.json` 完成；指令提示词操作会写入 `.md` 文件并设置或删除 `model_instructions_file`。切换后，已存在的 Codex session 不保证立即重新读取配置，项目当前约定是创建或重新打开 session。
+Codex-X-Pro 现有 Provider 操作主要通过修改 `config.toml` 和 `auth.json` 完成；指令提示词操作会写入 `.md` 文件并设置或删除 `model_instructions_file`。切换后，已存在的 Codex session 不保证立即重新读取配置，项目当前约定是创建或重新打开 session。
 
 ## 3. 设计原则
 
 ### 3.1 一个期望状态，两个运行投影
 
-Codex-X 内部需要维护唯一的“用户期望状态”（Canonical State）：
+Codex-X-Pro 内部需要维护唯一的“用户期望状态”（Canonical State）：
 
 ```text
 Provider:
@@ -127,7 +127,7 @@ Observation:
 网关开启：Canonical State -> Gateway Runtime State
 ```
 
-不得把“当前 `config.toml`”同时当作网关模式下的 Provider 唯一真相，否则 `base_url` 会被本地网关地址遮蔽，Codex-X 无法可靠判断实际远程 Provider。
+不得把“当前 `config.toml`”同时当作网关模式下的 Provider 唯一真相，否则 `base_url` 会被本地网关地址遮蔽，Codex-X-Pro 无法可靠判断实际远程 Provider。
 
 ### 3.2 网关只绑定本机
 
@@ -139,21 +139,21 @@ Observation:
 
 ### 3.4 明确请求级与配置级边界
 
-- Codex-X 负责用户期望、Provider 库、提示词模板、备份和模式切换。
+- Codex-X-Pro 负责用户期望、Provider 库、提示词模板、备份和模式切换。
 - 网关负责当前请求的上游选择、模型覆盖、提示词注入和请求观测。
-- 网关不应直接修改 Codex-X Provider 数据库。
+- 网关不应直接修改 Codex-X-Pro Provider 数据库。
 
 ## 4. 模式定义
 
 ### 4.1 `direct`（网关关闭）
 
-保持现有 Codex-X 行为：
+保持现有 Codex-X-Pro 行为：
 
 ```text
 Codex -> 真实 Provider
 ```
 
-Provider 操作写入 live `config.toml`/`auth.json`；提示词操作写入 Codex-X 管理的提示词文件和 `model_instructions_file`。
+Provider 操作写入 live `config.toml`/`auth.json`；提示词操作写入 Codex-X-Pro 管理的提示词文件和 `model_instructions_file`。
 
 ### 4.2 `gateway`（网关开启）
 
@@ -175,7 +175,7 @@ base_url = "http://127.0.0.1:<port>/v1"
 
 ## 5. 独立网关页面
 
-网关模式的按钮和设置放在 Codex-X 的独立“本地网关”页面中，不与 Provider 列表或“一键管理指令提示词”页面混在一起。Provider 和提示词页面仍负责编辑用户期望状态；它们在网关开启时通过统一运行时同步层反映到网关。
+网关模式的按钮和设置放在 Codex-X-Pro 的独立“本地网关”页面中，不与 Provider 列表或“一键管理指令提示词”页面混在一起。Provider 和提示词页面仍负责编辑用户期望状态；它们在网关开启时通过统一运行时同步层反映到网关。
 
 该页面最上方必须放置常驻提示条（位于脚本列表、测试按钮和其他设置之前）：
 
@@ -233,30 +233,30 @@ watchdog_autostart     = 是否在 Windows 登录时触发该任务
 
 “已开启”只有在网关端口就绪、Provider 和提示词状态均已提交、Codex live `base_url` 已切换并完成健康检查后才能显示。表单提交成功不等于运行时提交成功，页面应以网关返回的已提交状态为准。
 
-网关进程运行、Codex-X 管理网关和 Codex 当前请求已接入网关是三个独立事实。状态接口必须分别提供
+网关进程运行、Codex-X-Pro 管理网关和 Codex 当前请求已接入网关是三个独立事实。状态接口必须分别提供
 `running`、`managed_by_codex_x` 和 `codex_route_active`；只有三者满足
 `running=true`、`managed_by_codex_x=true`、`codex_route_active=true` 时，才允许称为“网关已接入”
 并启用 Provider/提示词热更新、实时观测和用户脚本。`codex_route_active` 必须根据持久化
 `codex_dir` 中 live `config.toml` 的有效 Provider `base_url` 与
 `http://127.0.0.1:<listen_port>/v1` 比较得出，不能只根据网关 `/state` 或 Tauri 子进程句柄推断。
 
-当网关进程仍运行且由 Codex-X 管理，但 live `config.toml` 已指向其他网站时，状态为
+当网关进程仍运行且由 Codex-X-Pro 管理，但 live `config.toml` 已指向其他网站时，状态为
 `disconnected/degraded`：保留网关、watchdog、网关模式意图和外部配置，不自动覆盖配置，也不把
 Provider/提示词/观测/脚本操作发送到网关运行时；页面必须明确显示“网关运行中但未接入 Codex”。
 
-当目标端口上已经存在健康网关，但 `managed_by_codex_x = false` 时，必须将其识别为外部网关，而不是 Codex-X 的网关模式：
+当目标端口上已经存在健康网关，但 `managed_by_codex_x = false` 时，必须将其识别为外部网关，而不是 Codex-X-Pro 的网关模式：
 
 ```text
 状态：外部网关运行中
-Codex-X 模式：direct / 未进入网关模式
-所有权：Codex-X 未接管
+Codex-X-Pro 模式：direct / 未进入网关模式
+所有权：Codex-X-Pro 未接管
 ```
 
-外部网关与 Codex-X 的状态完全隔离。Codex-X 不得因检测到外部网关而创建或保留自己的网关模式快照，也不得在退出、重启或启动恢复时改变 `managed_by_codex_x` 的判断。只要 `gateway-mode/state.json` 不存在，或持久化快照与运行时端口、监听地址、网关状态和 `process_id` 不匹配，当前端口上的运行实例就不能被视为 Codex-X 网关。
+外部网关与 Codex-X-Pro 的状态完全隔离。Codex-X-Pro 不得因检测到外部网关而创建或保留自己的网关模式快照，也不得在退出、重启或启动恢复时改变 `managed_by_codex_x` 的判断。只要 `gateway-mode/state.json` 不存在，或持久化快照与运行时端口、监听地址、网关状态和 `process_id` 不匹配，当前端口上的运行实例就不能被视为 Codex-X-Pro 网关。
 
-外部网关运行时，页面必须允许编辑监听端口并保留“启动网关”按钮，但必须禁用停止网关、实时观测、脚本启用/禁用和其他会改变外部网关状态的操作。用户不修改端口直接启动时，后端返回 `GATEWAY_PORT_IN_USE`；用户将端口改为例如 `8888` 后再启动，Codex-X 才可以在新端口建立自己的网关模式和快照。端口输入只改变 Codex-X 的启动目标，不停止或修改外部网关。
+外部网关运行时，页面必须允许编辑监听端口并保留“启动网关”按钮，但必须禁用停止网关、实时观测、脚本启用/禁用和其他会改变外部网关状态的操作。用户不修改端口直接启动时，后端返回 `GATEWAY_PORT_IN_USE`；用户将端口改为例如 `8888` 后再启动，Codex-X-Pro 才可以在新端口建立自己的网关模式和快照。端口输入只改变 Codex-X-Pro 的启动目标，不停止或修改外部网关。
 
-状态探测必须区分“正常停机”和“应运行但失联”。显式停止成功并删除 `gateway-mode/state.json` 后，`/state` 不可达是正常的 stopped 状态，返回 `running = false`、`degraded = false`、`error = null`。只有持久化意图仍为 gateway、Codex-X 管理的子进程仍存在，或已经记录持久化 degraded 状态时，控制接口不可达才返回 `degraded = true` 和错误详情。若同时存在 `degraded.json` 和本次健康探测错误，优先展示持久化恢复错误。
+状态探测必须区分“正常停机”和“应运行但失联”。显式停止成功并删除 `gateway-mode/state.json` 后，`/state` 不可达是正常的 stopped 状态，返回 `running = false`、`degraded = false`、`error = null`。只有持久化意图仍为 gateway、Codex-X-Pro 管理的子进程仍存在，或已经记录持久化 degraded 状态时，控制接口不可达才返回 `degraded = true` 和错误详情。若同时存在 `degraded.json` 和本次健康探测错误，优先展示持久化恢复错误。
 
 前端必须分别处理操作错误和状态错误：启动、停止命令失败直接展示该命令返回的错误；`processState.error` 仅在 `processState.degraded = true` 时展示。正常停止后的连接拒绝不得显示为 `CONTROL_API_UNAVAILABLE` 或“配置错误”。
 
@@ -335,7 +335,7 @@ Codex-X 模式：direct / 未进入网关模式
 - 点击网关总开关，执行第 6 节或第 9 节定义的开启/关闭事务；事务进行期间锁定重复操作。
 - 修改端口时，网关关闭状态下保存为下次启动配置；网关开启状态下显示迁移提示，并按第 10 节的端口流程处理。
 - 当网关为 `direct` 时，看门狗和登录自启动按钮必须禁用；任何来自前端的请求也必须在后端被拒绝为无效状态操作，不能仅依赖按钮禁用。
-- 网关开启事务成功后自动持久化 `watchdog_desired = true`，启用并启动唯一的项目任务 `Codex-X Local Gateway`；watchdog 是网关模式的一部分，不再作为独立运行开关。该任务不得覆盖或控制个人外部工具的 `Codex Responses Repair Gateway` 任务。
+- 网关开启事务成功后自动持久化 `watchdog_desired = true`，启用并启动唯一的项目任务 `Codex-X-Pro Local Gateway`；watchdog 是网关模式的一部分，不再作为独立运行开关。该任务不得覆盖或控制个人外部工具的 `Codex Responses Repair Gateway` 任务。
 - 网关关闭事务必须撤销看门狗的运行资格、停止正在运行的看门狗并禁用登录任务；应用退出或应用重启不属于网关关闭事务。
 - 运行时同步失败时显示重试入口，不自动回写或覆盖用户的 Provider/提示词编辑内容。
 - 脚本发现支持“刷新脚本”操作；刷新只读取约定脚本目录，不自动启用新发现的脚本。manifest 错误必须就地显示，不得让整个网关页面失败。
@@ -353,7 +353,7 @@ Codex-X 模式：direct / 未进入网关模式
 Provider 列表和指令提示词页面保留现有入口。它们提交操作后：
 
 ```text
-网关关闭：继续调用现有 Codex-X 配置写入逻辑
+网关关闭：继续调用现有 Codex-X-Pro 配置写入逻辑
 网关开启：保存 Canonical State，再调用 Gateway Runtime Sync
 ```
 
@@ -366,7 +366,7 @@ Provider 列表和指令提示词页面保留现有入口。它们提交操作�
 1. 读取并校验 Canonical State、监听地址和端口。
 2. 网关模式启用成功后自动持久化 `watchdog_desired = true`，启用唯一的登录任务并启动看门狗。
 3. 将 Provider 和提示词运行时状态发送到网关。
-4. 备份当前 `config.toml`、`auth.json` 以及 Codex-X 管理的提示词文件。
+4. 备份当前 `config.toml`、`auth.json` 以及 Codex-X-Pro 管理的提示词文件。
 5. 将 Codex live `base_url` 原子改为本地网关地址。
 6. 执行健康检查，确认网关可接收并转发测试请求；测试不得发送真实有副作用的业务请求。
 7. 提交模式为 `gateway`。
@@ -380,7 +380,7 @@ Provider 列表和指令提示词页面保留现有入口。它们提交操作�
 
 开启阶段不得把所有错误合并为一个“开启失败”提示：端口绑定问题使用 `GATEWAY_PORT_IN_USE`，看门狗启动问题使用 `WATCHDOG_TASK_START_FAILED`，运行时状态提交问题使用 `GATEWAY_RUNTIME_SYNC_FAILED`，健康检查问题使用 `GATEWAY_HEALTHCHECK_FAILED`，live 文件竞争修改使用 `LIVE_CONFIG_WRITE_CONFLICT`。如果实际原因无法分类，也必须返回 `GATEWAY_UNKNOWN_FAILURE` 并附带不含敏感信息的底层错误摘要。
 
-网关模式下不能让 Codex 同时读取同一份 Codex-X 管理的 `model_instructions_file` 并由网关再次注入，否则会产生重复提示词。启用网关时应保存该文件的投影信息，并暂时移除或停用该字段；关闭网关时再恢复。
+网关模式下不能让 Codex 同时读取同一份 Codex-X-Pro 管理的 `model_instructions_file` 并由网关再次注入，否则会产生重复提示词。启用网关时应保存该文件的投影信息，并暂时移除或停用该字段；关闭网关时再恢复。
 
 ## 7. 网关模式下的 Provider 操作
 
@@ -425,7 +425,7 @@ UI 选择或禁用模板
 
 必须保留现有 `append` 和 `replace` 语义：
 
-- `append`：保留原请求提示词，并追加 Codex-X 提示词；
+- `append`：保留原请求提示词，并追加 Codex-X-Pro 提示词；
 - `replace`：替换约定的 system/developer/instructions 内容。
 
 注入应基于解析后的 Responses JSON 结构，只处理约定路径，例如 `instructions`、`input[*].content[*].text` 以及 system/developer 消息。不得对整个 JSON 做无差别字符串替换，不得修改工具参数、文件路径或无关字段。
@@ -487,13 +487,13 @@ replace 模式只替换已确认目标的文本，不进行全 JSON 字符串替
 
 ### 8.5 与现有文件投影的对应
 
-进入网关模式时，应先把当前 Codex-X 文件状态转换为运行时提示词：
+进入网关模式时，应先把当前 Codex-X-Pro 文件状态转换为运行时提示词：
 
 - 当前为 replace：读取当前生效提示词内容，网关接管注入；为防止重复，暂时移除 live `model_instructions_file`，但保存原字段和文件快照；
 - 当前为 append：提取 `AGENTS.md` 中 `AGENTS_MANAGED_BEGIN/END` 区块的内容，网关接管该区块；移除受管区块但保留用户其他 `AGENTS.md` 内容，用户原有 `model_instructions_file` 继续由 Codex 加载；
 - 当前为 disabled：网关不注入，原有用户配置保持不变。
 
-网关模式中切换模板只更新运行时状态和必要的中性文件投影，不把同一份内容同时留在 Codex 文件和网关中。关闭网关时再按当前 Canonical State 反向生成：append 写回受管 `AGENTS.md` 区块，replace 写回 `.md` 并设置 `model_instructions_file`，disabled 清除 Codex-X 管理内容。
+网关模式中切换模板只更新运行时状态和必要的中性文件投影，不把同一份内容同时留在 Codex 文件和网关中。关闭网关时再按当前 Canonical State 反向生成：append 写回受管 `AGENTS.md` 区块，replace 写回 `.md` 并设置 `model_instructions_file`，disabled 清除 Codex-X-Pro 管理内容。
 
 ### 8.6 幂等、透传和诊断
 
@@ -514,7 +514,7 @@ replace 模式只替换已确认目标的文本，不进行全 JSON 字符串替
 2. 在持久化状态中原子提交 `desired_mode = direct` 并撤销看门狗运行资格；可保留 `watchdog_autostart` 作为下次开启网关时的用户偏好。
 3. 通知当前看门狗退出，并停止计划任务的运行实例；轮询确认不会再拉起网关。
 4. 从 Canonical State 读取当前 Provider 和提示词状态。
-5. 将 Provider 投影回真实 `config.toml` 和 `auth.json`，将提示词投影回 Codex-X 管理的 `.md` 文件及 `model_instructions_file`。
+5. 将 Provider 投影回真实 `config.toml` 和 `auth.json`，将提示词投影回 Codex-X-Pro 管理的 `.md` 文件及 `model_instructions_file`。
 6. 原子恢复真实 Provider 的 `base_url`，校验 TOML/JSON/提示词文件可解析且字段完整。
 7. 所有回写和校验成功后才提交模式为 `direct`。
 
@@ -531,26 +531,26 @@ replace 模式只替换已确认目标的文本，不进行全 JSON 字符串替
 端口变更不是普通文本设置：
 
 - 网关关闭时，保存为下次启动配置；
-- 检测到外部网关时，端口输入保持可编辑；不修改端口直接启动必须返回 `GATEWAY_PORT_IN_USE`，修改到空闲端口后才允许 Codex-X 建立自己的网关模式；
+- 检测到外部网关时，端口输入保持可编辑；不修改端口直接启动必须返回 `GATEWAY_PORT_IN_USE`，修改到空闲端口后才允许 Codex-X-Pro 建立自己的网关模式；
 - 网关开启时，优先启动新端口并健康检查，再切换 Codex `base_url`，最后关闭旧端口；
 - 若暂不实现无缝迁移，针对网关进程本身的端口迁移必须明确提示“重启网关后生效”；涉及 Codex live 配置读取的改动按下一条规则提示重启 Codex。
 - 对需要 Codex 重新读取 live 配置的改动，独立网关页面必须使用红色边框提示“网关改动将在重启 Codex 后生效”，并将该提示保持在设置内容附近。
 
-端口迁移必须区分 `NEW_PORT_IN_USE`、`NEW_PORT_NOT_READY` 和 `BASE_URL_SWITCH_FAILED`。迁移失败时保留旧监听、旧 `base_url` 和旧模式；如果旧监听也已失效，应进入 `degraded` 并显示旧端口失效的实际错误。外部网关不属于 Codex-X 的端口迁移对象，不能被关闭、迁移或纳入回滚。
+端口迁移必须区分 `NEW_PORT_IN_USE`、`NEW_PORT_NOT_READY` 和 `BASE_URL_SWITCH_FAILED`。迁移失败时保留旧监听、旧 `base_url` 和旧模式；如果旧监听也已失效，应进入 `degraded` 并显示旧端口失效的实际错误。外部网关不属于 Codex-X-Pro 的端口迁移对象，不能被关闭、迁移或纳入回滚。
 
 ### 10.2 看门狗职责
 
 看门狗继续作为独立后台组件，不作为 Tauri 子进程：
 
-- Codex-X 负责创建、启用、停用和检查 Windows 计划任务；
+- Codex-X-Pro 负责创建、启用、停用和检查 Windows 计划任务；
 - 看门狗负责监控端口、启动网关、异常重启和写日志；
-- Codex-X 关闭、重启或卡住时，看门狗仍可独立运行，不因 Tauri 窗口退出而自动停止；
+- Codex-X-Pro 关闭、重启或卡住时，看门狗仍可独立运行，不因 Tauri 窗口退出而自动停止；
 - 网关进程崩溃或退出后，只要 `desired_mode = gateway` 且 `watchdog_desired = true`，看门狗就应按重试策略重新拉起网关；
 - 看门狗每次循环都重新读取持久化的运行意图，不以“端口当前没有监听”作为单独的重启允许。当 `desired_mode = direct` 或 `watchdog_desired = false` 时，必须停止自动拉起和重启。
-- 主窗口关闭沿用原项目托盘语义，仅隐藏窗口；托盘“退出 Codex-X”和应用重启触发 `RunEvent::ExitRequested`，只退出 Codex-X 进程，不撤销 watchdog intent、不停止网关、不恢复直连配置。
+- 主窗口关闭沿用原项目托盘语义，仅隐藏窗口；托盘“退出 Codex-X-Pro”和应用重启触发 `RunEvent::ExitRequested`，只退出 Codex-X-Pro 进程，不撤销 watchdog intent、不停止网关、不恢复直连配置。
 - 只有用户明确点击“停止网关”时才复用网关关闭流程恢复直连配置；恢复失败时重新激活 watchdog 并保留网关现场。操作系统强制终止或崩溃由下一次启动恢复流程接管。
 
-启用“登录自启动”时应复用项目任务 `Codex-X Local Gateway`，不得重复创建同名或功能相同的项目任务。个人外部工具的任务 `Codex Responses Repair Gateway` 属于独立运行边界，Codex-X 不得查询后覆盖、停止、禁用或删除它。UI 应展示项目任务状态、项目端口状态和最近一次退出码。
+启用“登录自启动”时应复用项目任务 `Codex-X-Pro Local Gateway`，不得重复创建同名或功能相同的项目任务。个人外部工具的任务 `Codex Responses Repair Gateway` 属于独立运行边界，Codex-X-Pro 不得查询后覆盖、停止、禁用或删除它。UI 应展示项目任务状态、项目端口状态和最近一次退出码。
 
 Windows 任务必须通过 `schtasks /Create /XML <task-xml> /F` 创建，不得把完整 PowerShell action 放入 `/TR`。`schtasks` 对 `/TR` 有 261 字符上限，而 watchdog action 同时包含脚本、Python、upstream 和持久化 intent 路径，正常用户目录下就可能超过该上限。任务 XML 使用带 BOM 的 UTF-16LE 写入，并至少包含以下约束：
 
@@ -562,7 +562,7 @@ Windows 任务必须通过 `schtasks /Create /XML <task-xml> /F` 创建，不得
 
 XML 中的脚本、解释器、upstream 和 intent 路径必须按 XML 文本节点规则转义。临时任务 XML 在创建成功或失败后都要删除；`schtasks` 返回失败时，后端应返回经过长度限制且不含凭据的 stdout/stderr 摘要，不能只显示统一的“无法创建”。重建任务前还必须导出原任务 XML 和运行状态；若创建或立即启动失败，恢复原任务定义和原运行状态，启动前无任务时删除本次新建任务。任务回滚失败必须追加 `WATCHDOG_TASK_ROLLBACK_FAILED`，不能静默忽略。应用内所有 `powershell.exe`、`schtasks.exe` 和 `taskkill.exe` 调用继续通过 Windows 隐藏进程封装执行。
 
-网关模式下 `watchdog_desired = true`，唯一的 `Codex-X Local Gateway` 任务负责 Windows 登录触发和项目看门狗运行；登录后触发的任务仍必须先检查 `desired_mode` 和 `watchdog_desired`，不符合时立即退出。应用退出不会改变这两个值。
+网关模式下 `watchdog_desired = true`，唯一的 `Codex-X-Pro Local Gateway` 任务负责 Windows 登录触发和项目看门狗运行；登录后触发的任务仍必须先检查 `desired_mode` 和 `watchdog_desired`，不符合时立即退出。应用退出不会改变这两个值。
 
 开启事务在写入任何 `gateway-mode` 文件前必须记录 `state.json`、`runtime-state.json`、watchdog intent 和原始文件备份的启动前快照。若 watchdog 任务创建/启动或更早阶段失败，应停止本次网关、恢复 live `config.toml` 和受管 `AGENTS.md`，再恢复这些快照；启动前不存在的文件应删除，启动前已存在的文件应恢复原字节。不得留下“`state.json` 指向新端口、live 配置仍指向旧端口”的半提交状态。
 
@@ -596,7 +596,7 @@ XML 中的脚本、解释器、upstream 和 intent 路径必须按 XML 文本节
 ### 11.1 页面状态和操作
 
 - `direct` 模式、网关未启动或网关正在关闭时，页面整体灰化，并显示“请先进入网关模式”；启动、暂停、清除、筛选、排序和上限设置均不可操作。
-- 外部网关运行时，页面显示“外部网关运行中 / Codex-X 未接管”，按 `direct` 语义处理；监听端口和上游地址可以修改，启动按钮可用，停止、观测、脚本和其他运行时控制均不可操作。
+- 外部网关运行时，页面显示“外部网关运行中 / Codex-X-Pro 未接管”，按 `direct` 语义处理；监听端口和上游地址可以修改，启动按钮可用，停止、观测、脚本和其他运行时控制均不可操作。
 - 网关启动中时，页面显示“网关启动中”，只允许查看启动阶段和明确的失败原因；健康检查通过后才解锁观测操作。
 - 网关正常运行后，用户可显式点击“启动采集”或“暂停采集”。采集默认处于暂停状态，避免用户仅开启网关就产生额外观测开销。
 - “清除”只清空当前保留的请求记录，不回退全局递增的请求序号；页面应显示当前保留数、保留上限以及累计淘汰/丢弃数。
@@ -785,7 +785,7 @@ direct
 - 网关请求处理和控制更新使用读写锁或等价机制；
 - UI 显示以网关返回的已提交版本为准，不以本地表单提交成功作为最终依据；
 - `direct` 模式不能进入 `watchdog_starting` 或 `watchdog_running`；只有先完成 `enabling -> gateway` 才能接受看门狗操作；
-- `gateway -> disabling` 必须先撤销 watchdog intent，再停止看门狗和回写直连配置；全部恢复成功后才删除网关模式快照并进入 `direct`。Codex-X 进程退出不复用该清理流程；强制终止/崩溃则由下一次启动恢复接管。
+- `gateway -> disabling` 必须先撤销 watchdog intent，再停止看门狗和回写直连配置；全部恢复成功后才删除网关模式快照并进入 `direct`。Codex-X-Pro 进程退出不复用该清理流程；强制终止/崩溃则由下一次启动恢复接管。
 
 ## 14. 实施分期
 
@@ -827,7 +827,7 @@ direct
 
 至少覆盖以下回归场景：
 
-1. 网关关闭时，Provider 和提示词行为与现有 Codex-X 一致。
+1. 网关关闭时，Provider 和提示词行为与现有 Codex-X-Pro 一致。
 2. 开启网关后，Codex `base_url` 指向本地端口且网关状态为已就绪。
 3. 网关模式下切换 Provider，下一条请求使用新地址和模型，无需重启 Codex。
 4. 网关模式下切换、追加和替换提示词，下一条请求结果符合预期且不重复注入。
@@ -843,7 +843,7 @@ direct
 14. 并发 Provider/提示词更新不会产生旧版本覆盖新版本。
 15. 旧 session 的缓存行为在 UI 中有明确提示，不把“网关热更新”误报为 Codex 全部 session 已重载配置。
 16. 网关为关闭时，看门狗和登录自启动按钮均禁用，禁用原因可见且后端拒绝违规操作。
-17. 网关开启后自动启用看门狗和登录自启动；关闭 Codex-X 主窗口只隐藏到托盘，退出或重启 Codex-X 也不改变网关状态。
+17. 网关开启后自动启用看门狗和登录自启动；关闭 Codex-X-Pro 主窗口只隐藏到托盘，退出或重启 Codex-X-Pro 也不改变网关状态。
 18. 模拟网关崩溃，在 `desired_mode = gateway` 且 `watchdog_desired = true` 时可被自动恢复；连续崩溃超过上限时停止重试并展示明确原因。
 19. 只有显式关闭网关时才撤销看门狗重启资格、停止任务并回写直连配置；清理失败时重新激活 watchdog 并保留网关模式。
 20. Windows 重新登录时，仅在持久化 `desired_mode = gateway` 且 `watchdog_desired = true` 时触发看门狗；`direct` 模式不会自动拉起。
@@ -861,10 +861,10 @@ direct
 32. 默认测试文本包含嵌套 JSON、非敏感测试标记且不包含真实认证、用户数据或最终上游地址；脚本通过 `CODEX_X_SCRIPT_MODE=test` 获知测试模式。
 33. 自定义测试只做 raw-text 请求/响应解析、退出码和结构校验；非法文本在弹窗内显示错误且不启动脚本，合法文本不因业务字段或功能结果不同而失败；成功和失败详情均能查看实际输出或明确的 `null` 状态。
 34. 脚本页面最上方持续显示“用户脚本仅在网关模式下生效。当前为直连模式时，脚本不会处理 Codex 的真实请求。”；直连模式下的查看、刷新和测试不修改或拦截真实请求，也不写入真实请求观测和耗时统计。
-35. 外部网关运行且 `managed_by_codex_x = false` 时，页面显示“外部网关运行中 / Codex-X 未接管”，仍按直连模式处理；端口可编辑，启动按钮可用，停止、观测和脚本控制不可用。
-36. 外部网关占用当前端口时，直接启动 Codex-X 返回 `GATEWAY_PORT_IN_USE`；修改到空闲端口后启动成功，外部网关原端口继续运行且不受影响。
-37. Codex-X 退出或重启后，外部网关仍可被识别为外部网关；`managed_by_codex_x` 不依赖 Tauri 进程是否仍持有子进程句柄。
-38. 网关进程运行、Codex-X 管理网关但 live `config.toml` 指向外部网站时，返回 `codex_route_active = false`，页面显示“网关运行中但未接入 Codex”；保留网关和 watchdog，不覆盖外部配置，且 Provider/提示词热更新、实时观测和用户脚本控制均不可用。
+35. 外部网关运行且 `managed_by_codex_x = false` 时，页面显示“外部网关运行中 / Codex-X-Pro 未接管”，仍按直连模式处理；端口可编辑，启动按钮可用，停止、观测和脚本控制不可用。
+36. 外部网关占用当前端口时，直接启动 Codex-X-Pro 返回 `GATEWAY_PORT_IN_USE`；修改到空闲端口后启动成功，外部网关原端口继续运行且不受影响。
+37. Codex-X-Pro 退出或重启后，外部网关仍可被识别为外部网关；`managed_by_codex_x` 不依赖 Tauri 进程是否仍持有子进程句柄。
+38. 网关进程运行、Codex-X-Pro 管理网关但 live `config.toml` 指向外部网站时，返回 `codex_route_active = false`，页面显示“网关运行中但未接入 Codex”；保留网关和 watchdog，不覆盖外部配置，且 Provider/提示词热更新、实时观测和用户脚本控制均不可用。
 
 ## 16. 用户脚本处理器协议（旧 JSONL 版本，已废弃）
 

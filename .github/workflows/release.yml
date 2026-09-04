@@ -93,7 +93,7 @@ jobs:
           )
           body = match.group(1).strip() if match else ""
           if not body:
-              body = "Codex-X desktop release."
+              body = "Codex-X-Pro desktop release."
           Path("release-body.md").write_text(body + "\n", encoding="utf-8")
           PY
 
@@ -120,13 +120,13 @@ jobs:
               exit 1
             fi
             gh release edit "$RELEASE_TAG" \
-              --title "Codex-X ${RELEASE_TAG}" \
+              --title "Codex-X-Pro ${RELEASE_TAG}" \
               --notes-file release-body.md \
               --draft
           else
             gh release create "$RELEASE_TAG" \
               --verify-tag \
-              --title "Codex-X ${RELEASE_TAG}" \
+              --title "Codex-X-Pro ${RELEASE_TAG}" \
               --notes-file release-body.md \
               --draft
           fi
@@ -163,22 +163,22 @@ jobs:
             platform: macos-latest
             macos: true
             args: --bundles app,dmg
-            asset_pattern: Codex-X-[version]-macos-apple-silicon[ext]
+            asset_pattern: Codex-X-Pro-[version]-macos-apple-silicon[ext]
           - name: macOS Intel
             platform: macos-15-intel
             macos: true
             args: --bundles app,dmg
-            asset_pattern: Codex-X-[version]-macos-intel[ext]
+            asset_pattern: Codex-X-Pro-[version]-macos-intel[ext]
           - name: Linux x64
             platform: ubuntu-22.04
             macos: false
             args: --bundles deb,rpm,appimage
-            asset_pattern: Codex-X-[version]-linux-x64[ext]
+            asset_pattern: Codex-X-Pro-[version]-linux-x64[ext]
           - name: Windows x64
             platform: windows-latest
             macos: false
             args: --bundles msi
-            asset_pattern: Codex-X-[version]-windows-x64[ext]
+            asset_pattern: Codex-X-Pro-[version]-windows-x64[ext]
 
     steps:
       - name: Checkout release tag
@@ -257,9 +257,9 @@ jobs:
               exit 1
             fi
           done
-          certificate_path="$RUNNER_TEMP/codex-x-developer-id.p12"
+          certificate_path="$RUNNER_TEMP/codex-x-pro-developer-id.p12"
           api_key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"
-          keychain_path="$RUNNER_TEMP/codex-x-signing.keychain-db"
+          keychain_path="$RUNNER_TEMP/codex-x-pro-signing.keychain-db"
 
           printf '%s' "$APPLE_CERTIFICATE" | base64 -D > "$certificate_path"
           printf '%s' "$APPLE_API_KEY_P8_BASE64" | base64 -D > "$api_key_path"
@@ -353,18 +353,18 @@ jobs:
         run: |
           set -euo pipefail
           portable_root="apps/desktop/src-tauri/portable"
-          portable_dir="$portable_root/Codex-X-${VERSION}-windows-x64-portable"
-          archive="apps/desktop/src-tauri/Codex-X-${VERSION}-windows-x64-portable.zip"
+          portable_dir="$portable_root/Codex-X-Pro-${VERSION}-windows-x64-portable"
+          archive="apps/desktop/src-tauri/Codex-X-Pro-${VERSION}-windows-x64-portable.zip"
           rm -rf "$portable_root"
           mkdir -p "$portable_dir"
-          cp apps/desktop/src-tauri/target/release/codex-x.exe "$portable_dir/Codex-X.exe"
-          touch "$portable_dir/Codex-X.portable"
+          cp apps/desktop/src-tauri/target/release/codex-x-pro.exe "$portable_dir/Codex-X-Pro.exe"
+          touch "$portable_dir/Codex-X-Pro.portable"
           cat > "$portable_dir/README-portable.txt" <<'EOF'
-          Codex-X Windows Portable
+          Codex-X-Pro Windows Portable
 
-          Double click Codex-X.exe to run. No MSI installation is required.
+          Double click Codex-X-Pro.exe to run. No MSI installation is required.
           The portable edition uses manual downloads instead of in-app installation.
-          Keep Codex-X.portable next to Codex-X.exe so the app can identify this edition.
+          Keep Codex-X-Pro.portable next to Codex-X-Pro.exe so the app can identify this edition.
           Microsoft Edge WebView2 Runtime is required; Windows 10/11 usually already includes it.
           EOF
           powershell -NoProfile -Command "Compress-Archive -Path '${portable_dir}/*' -DestinationPath '${archive}' -Force"

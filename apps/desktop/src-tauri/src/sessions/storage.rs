@@ -332,7 +332,6 @@ fn scan_rollout_file_metadata(
         if payload.get("model_provider").and_then(Value::as_str) != Some(target_provider) {
             metadata.file_mismatched_session_meta += 1;
         }
-        break;
     }
 
     Ok(metadata)

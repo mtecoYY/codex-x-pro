@@ -5,18 +5,18 @@ use crate::remote::{fetch_first_valid, RemoteSource};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
-const RELEASES_URL: &str = "https://github.com/yynxxxxx/Codex-X/releases";
+const RELEASES_URL: &str = "https://github.com/mtecoYY/codex-x-pro/releases";
 const SHIELDS_KEY: &str = "Shields CDN";
 const GITHUB_KEY: &str = "GitHub Releases";
 const RELEASE_SOURCES: [RemoteSource<'static>; 2] = [
     RemoteSource::new(
         SHIELDS_KEY,
-        "https://img.shields.io/github/v/release/yynxxxxx/Codex-X.json?display_name=tag",
+        "https://img.shields.io/github/v/release/mtecoYY/codex-x-pro.json?display_name=tag",
         Some("application/json"),
     ),
     RemoteSource::new(
         GITHUB_KEY,
-        "https://api.github.com/repos/yynxxxxx/Codex-X/releases/latest",
+        "https://api.github.com/repos/mtecoYY/codex-x-pro/releases/latest",
         Some("application/vnd.github+json"),
     ),
 ];
@@ -143,7 +143,7 @@ mod tests {
         assert_eq!(info.latest_version, "v0.2.36");
         assert_eq!(
             info.html_url,
-            "https://github.com/yynxxxxx/Codex-X/releases/tag/v0.2.36"
+            "https://github.com/mtecoYY/codex-x-pro/releases/tag/v0.2.36"
         );
         assert!(info.has_update);
         let json = serde_json::to_value(info).expect("serialize update info");

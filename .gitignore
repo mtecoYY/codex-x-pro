@@ -29,7 +29,7 @@ apple cert/
 *.pfx
 *.pem
 *.key
-codex-x-updater.key
+codex-x-pro-updater.key
 codex-new-ui/
 
 # Personal local gateway scripts (normally under the user's home directory)

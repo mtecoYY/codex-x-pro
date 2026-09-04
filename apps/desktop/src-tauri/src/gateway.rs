@@ -1194,7 +1194,7 @@ pub(crate) fn initialize_on_startup() -> Result<()> {
             return Ok(());
         }
         return Err(CodexxError::Config(
-            "GATEWAY_PORT_IN_USE: 持久化端口由非 Codex-X 网关占用".to_string(),
+            "GATEWAY_PORT_IN_USE: 持久化端口由非 Codex-X-Pro 网关占用".to_string(),
         ));
     }
     set_watchdog_intent("gateway", true, meta.listen_port, &upstream)?;
@@ -1332,7 +1332,7 @@ pub(crate) fn start(input: GatewayStartInput) -> Result<GatewayProcessState> {
             return start_watchdog(input);
         }
         return Err(CodexxError::Config(
-            "GATEWAY_PORT_IN_USE: 目标端口已被非 Codex-X 网关占用".to_string(),
+            "GATEWAY_PORT_IN_USE: 目标端口已被非 Codex-X-Pro 网关占用".to_string(),
         ));
     }
     let mode_dir = mode_dir()?;
@@ -1549,7 +1549,7 @@ fn stop_process_only() -> Result<()> {
         .unwrap_or_else(|error| error.into_inner());
     let Some(mut child) = slot.take() else {
         return Err(CodexxError::Config(
-            "GATEWAY_PROCESS_NOT_MANAGED: 当前监听并非由 Codex-X 启动，未执行终止".to_string(),
+            "GATEWAY_PROCESS_NOT_MANAGED: 当前监听并非由 Codex-X-Pro 启动，未执行终止".to_string(),
         ));
     };
     child
@@ -1752,7 +1752,7 @@ pub(crate) fn stop() -> Result<()> {
     }
     /*
      * Replace mode owns the selected prompt file. Append mode owns only the
-     * Codex-X block in AGENTS.md; all content outside that block comes from
+     * Codex-X-Pro block in AGENTS.md; all content outside that block comes from
      * the file currently on disk.
      */
     let agents_update = if runtime_injection_mode == "append" {
@@ -1967,7 +1967,7 @@ fn watchdog_status(desired: bool) -> WatchdogStatus {
     }
 }
 
-const WATCHDOG_TASK_NAME: &str = "Codex-X Local Gateway";
+const WATCHDOG_TASK_NAME: &str = "Codex-X-Pro Local Gateway";
 
 fn watchdog_autostart() -> bool {
     program_command(
@@ -2703,7 +2703,7 @@ requires_openai_auth = true
         let xml = watchdog_task_xml(
             &input,
             Path::new("C:/Users/Test & QA/.codexx/gateway-mode/watchdog-intent.json"),
-            Path::new("C:/Codex-X/Test & QA/codex_responses_repair_watchdog.ps1"),
+            Path::new("C:/Codex-X-Pro/Test & QA/codex_responses_repair_watchdog.ps1"),
         );
         assert!(xml.contains("<Hidden>true</Hidden>"));
         assert!(xml.contains("<Enabled>true</Enabled>"));
@@ -2720,7 +2720,7 @@ requires_openai_auth = true
 
     #[test]
     fn project_watchdog_task_does_not_reuse_the_personal_gateway_task_name() {
-        assert_eq!(WATCHDOG_TASK_NAME, "Codex-X Local Gateway");
+        assert_eq!(WATCHDOG_TASK_NAME, "Codex-X-Pro Local Gateway");
         assert_ne!(WATCHDOG_TASK_NAME, "Codex Responses Repair Gateway");
     }
 
@@ -2816,7 +2816,7 @@ requires_openai_auth = true
     #[ignore = "creates and deletes an isolated current-user Windows scheduled task"]
     fn windows_schtasks_accepts_generated_watchdog_xml() {
         let task_name = format!(
-            "Codex-X Gateway XML Test {} {}",
+            "Codex-X-Pro Gateway XML Test {} {}",
             std::process::id(),
             isolated_test_path("id")
                 .file_name()

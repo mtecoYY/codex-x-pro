@@ -101,7 +101,7 @@ fn run_app_server_delete_attempt(
             "params": {
                 "clientInfo": {
                     "name": "codex_x",
-                    "title": "Codex-X",
+                    "title": "Codex-X-Pro",
                     "version": env!("CARGO_PKG_VERSION")
                 },
                 "capabilities": null

@@ -33,7 +33,7 @@ pub(crate) fn acquire_live_config_lock(codex_dir: &Path) -> Result<LiveConfigLoc
         .map_err(|error| io_err(&path, error))?;
     file.try_lock().map_err(|_| {
         CodexxError::Config(format!(
-            "另一个 Codex-X 正在修改 Codex live 配置，请稍后重试: {}",
+            "另一个 Codex-X-Pro 正在修改 Codex live 配置，请稍后重试: {}",
             path.display()
         ))
     })?;
@@ -190,7 +190,7 @@ mod tests {
         let error = acquire_live_config_lock(&dir)
             .err()
             .expect("second lock must fail");
-        assert!(error.to_string().contains("另一个 Codex-X"));
+        assert!(error.to_string().contains("另一个 Codex-X-Pro"));
         drop(first);
         acquire_live_config_lock(&dir).expect("lock is released on drop");
         fs::remove_dir_all(dir).expect("remove test directory");

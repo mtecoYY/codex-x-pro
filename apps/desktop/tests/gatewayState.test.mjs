@@ -17,7 +17,7 @@ test("degraded gateway state keeps live controls disabled", () => {
   assert.equal(gatewayUsesRuntime(state), false);
 });
 
-test("an unmanaged running gateway is external and does not put Codex-X in gateway mode", () => {
+test("an unmanaged running gateway is external and does not put Codex-X-Pro in gateway mode", () => {
   const state = { running: true, managedByCodexX: false, codexRouteActive: false, listenPort: 8787 };
   assert.equal(gatewayDisplayMode(state), "external");
   assert.equal(gatewayCanStart(state), true);

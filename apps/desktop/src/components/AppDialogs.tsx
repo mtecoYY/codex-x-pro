@@ -54,7 +54,7 @@ export function AppToast({
         ? <Loader2 className="cx-app-toast-loader" size={18} aria-hidden="true" />
         : <span className="cx-app-toast-dot" aria-hidden="true" />}
       <div className="cx-app-toast-copy">
-        <strong>{firstLine || (isError ? (lang === "zh" ? "操作失败" : "Action failed") : "Codex-X")}</strong>
+        <strong>{firstLine || (isError ? (lang === "zh" ? "操作失败" : "Action failed") : "Codex-X-Pro")}</strong>
         {detail && <span>{detail}</span>}
       </div>
     </div>
@@ -117,11 +117,11 @@ export function UpdateDialog({
           ? "可以直接在软件内完成更新，无需重新下载安装包。"
           : "检测到新版本，可前往下载页获取对应平台的安装包。",
         downloadingTitle: "正在下载更新",
-        downloadingDescription: "请保持 Codex-X 打开，下载完成后会自动安装。",
+        downloadingDescription: "请保持 Codex-X-Pro 打开，下载完成后会自动安装。",
         installingTitle: "正在安装更新",
         installingDescription: "即将完成，请暂时不要关闭软件。",
         readyTitle: "更新已准备好",
-        readyDescription: "重新启动 Codex-X 即可使用新版本。",
+        readyDescription: "重新启动 Codex-X-Pro 即可使用新版本。",
         errorTitle: "更新没有完成",
         errorDescription: updaterState.failure === "restart"
           ? "软件未能重新启动，请再试一次。"
@@ -148,16 +148,16 @@ export function UpdateDialog({
           ? "Update directly in the app without downloading the installer again."
           : "A new version is available from the download page for your platform.",
         downloadingTitle: "Downloading update",
-        downloadingDescription: "Keep Codex-X open. Installation starts automatically after download.",
+        downloadingDescription: "Keep Codex-X-Pro open. Installation starts automatically after download.",
         installingTitle: "Installing update",
         installingDescription: "Almost done. Please keep the app open.",
         readyTitle: "Update is ready",
-        readyDescription: "Restart Codex-X to use the new version.",
+        readyDescription: "Restart Codex-X-Pro to use the new version.",
         errorTitle: "Update did not finish",
         errorDescription: updaterState.failure === "restart"
-          ? "Codex-X could not restart. Please try again."
+          ? "Codex-X-Pro could not restart. Please try again."
           : "Try again, or use the download page if the problem continues.",
-        idleTitle: "Codex-X is up to date",
+        idleTitle: "Codex-X-Pro is up to date",
         idleDescription: "There is no new version available right now.",
         current: "Current",
         latest: "New version",
@@ -355,7 +355,7 @@ export function StartupWizardDialog({
         <>
           <Button variant="ghost" onClick={onSkip}>{isChinese ? "跳过" : "Skip"}</Button>
           <Button variant="secondary" icon={<Settings size={16} />} onClick={onOpenSettings}>{isChinese ? "去设置" : "Settings"}</Button>
-          <Button icon={<CheckCircle2 size={16} />} onClick={onEnter}>{isChinese ? "进入 Codex-X" : "Enter Codex-X"}</Button>
+          <Button icon={<CheckCircle2 size={16} />} onClick={onEnter}>{isChinese ? "进入 Codex-X-Pro" : "Enter Codex-X-Pro"}</Button>
         </>
       )}
     >

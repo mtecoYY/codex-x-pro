@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Codex-X will be documented here.
+All notable changes to Codex-X-Pro will be documented here.
 
 ## [Unreleased]
 
@@ -114,7 +114,7 @@ All notable changes to Codex-X will be documented here.
 ### 调整
 
 - 暂时下线皮肤中心并隐藏侧边栏入口，皮肤页面、运行时实现和用户本地主题文件继续保留，后续可以通过统一功能开关重新启用。
-- 升级后会自动暂停 Codex-X 此前启用的皮肤并恢复官方显示；若自动停用失败，应用会显示明确错误，不会让用户在入口隐藏后失去恢复提示。
+- 升级后会自动暂停 Codex-X-Pro 此前启用的皮肤并恢复官方显示；若自动停用失败，应用会显示明确错误，不会让用户在入口隐藏后失去恢复提示。
 - 内置“椎名真白·樱花画室”不再注册为随应用编译的主题，其约 1.7 MB 壁纸不再进入正式安装包；主题源文件仍保留在仓库中。
 
 ## [v0.3.2] - 2026-07-25
@@ -141,7 +141,7 @@ All notable changes to Codex-X will be documented here.
 
 ### 修复 Bug
 
-- 修复 macOS 皮肤已经注入后 Codex-X 仍长期显示“应用中”、重开后无法识别当前主题的问题；单次注入现在会明确退出，外部命令带有硬超时，并可从经过验证的 Codex 主进程恢复遗失的本机调试端口。
+- 修复 macOS 皮肤已经注入后 Codex-X-Pro 仍长期显示“应用中”、重开后无法识别当前主题的问题；单次注入现在会明确退出，外部命令带有硬超时，并可从经过验证的 Codex 主进程恢复遗失的本机调试端口。
 - 修复皮肤尚未运行时错误显示“重新应用”、刷新缺少明确反馈，以及提示词或皮肤卡片过多时页面无法继续向下滚动的问题。
 - 优化普通横图在新任务首页超宽横幅中的自动焦点，避免人物头部被居中 `cover` 裁掉；主题包仍可通过 `art.focusY` 显式覆盖自动位置。
 - 修复切换到中转供应商时覆盖官方 `auth.json` 的问题，官方登录凭据与供应商凭据现在分别保存和恢复。
@@ -198,7 +198,7 @@ All notable changes to Codex-X will be documented here.
 
 - 修复相同 API 地址和 API Key 的供应商因名称、模型或其他配置不同而重复显示的问题；相同地址但不同 Key 的供应商仍会分别保留，升级后也会自动整理已有重复项。
 - 修复切换到其他供应商或切回 OpenAI Official 后，原供应商可能从列表中消失的问题；切换前会自动保存当前供应商。
-- 修复从 cc-switch 重复导入时可能覆盖 Codex-X 中已有供应商名称、模型或自定义配置的问题，并兼容旧版 cc-switch 数据。
+- 修复从 cc-switch 重复导入时可能覆盖 Codex-X-Pro 中已有供应商名称、模型或自定义配置的问题，并兼容旧版 cc-switch 数据。
 - 优化会话列表：Codex 自动创建的后台子会话不再重复显示为普通会话，项目数量和会话总数更加准确。
 - 优化会话编号显示，保留编号开头和结尾，减少多个会话看起来像同一个会话的情况。
 - 修复检测到的供应商与本地供应商同名时，编辑保存可能因 ID 冲突覆盖另一条记录的问题。
@@ -207,7 +207,7 @@ All notable changes to Codex-X will be documented here.
 
 ### 更新
 
-- 会话管理新增指定会话永久删除：支持单选、多选，并在二次确认后从当前 Codex 存储中硬删除；操作不进入回收站、不创建新的删除备份，Codex-X 内无法撤销。
+- 会话管理新增指定会话永久删除：支持单选、多选，并在二次确认后从当前 Codex 存储中硬删除；操作不进入回收站、不创建新的删除备份，Codex-X-Pro 内无法撤销。
 - “按项目路径分组”新增项目级三态勾选，可一次选中某个项目在当前列表中加载的全部会话，也支持跨多个项目批量选择；搜索状态下会同时显示当前命中数与项目会话总数。
 - 重做会话列表为更克制的表格式布局，统一标题、更新时间、Provider、模型和 ID 列，降低高亮边框、彩色标签与重复装饰造成的视觉干扰。
 - 移除“已选 / 需修复、选择需同步、清空选择、修复选中”等按条修复控件，保留顶部“检查会话”和“同步 / 修复”用于全量处理。
@@ -262,7 +262,7 @@ All notable changes to Codex-X will be documented here.
 ### 修复 Bug
 
 - 修复相同 Base URL、API Key、模型但 TOML 内容不同的供应商可能同时显示“当前”的问题；现在优先按完整 live TOML 匹配唯一配置，并避免重复展示 detected custom 卡片。
-- 修复追加提示词后禁用会误影响用户原有规则的风险；禁用只删除 Codex-X 管理的 AGENTS 区块或指令文件，用户其他内容保持不变。
+- 修复追加提示词后禁用会误影响用户原有规则的风险；禁用只删除 Codex-X-Pro 管理的 AGENTS 区块或指令文件，用户其他内容保持不变。
 - 修复并发操作在同一毫秒创建备份时可能发生临时文件名冲突的问题。
 - 修复切换 Skill / MCP 开关后条目因启用状态排序而跳到列表其他位置的问题。
 - 修复 macOS Overlay 标题栏无法拖动的问题：补齐 Tauri 2 的 `core:window:allow-start-dragging` capability，并统一顶部拖动区域样式。
@@ -270,7 +270,7 @@ All notable changes to Codex-X will be documented here.
 
 ### 开发
 
-- 将 `AGENTS.md` 纳入 Codex-X 备份与恢复流程。
+- 将 `AGENTS.md` 纳入 Codex-X-Pro 备份与恢复流程。
 - 增加受管区块合并/卸载、GitHub 动态模板发现、完整 TOML 供应商匹配、追加/替换模式和 AGENTS 恢复测试。
 
 ## [v0.2.31] - 2026-07-09
@@ -283,7 +283,7 @@ All notable changes to Codex-X will be documented here.
 
 ### 修复 Bug
 
-- 修复启用第三方供应商后，关闭并重新打开 Codex-X 不再显示“当前启用”的问题。
+- 修复启用第三方供应商后，关闭并重新打开 Codex-X-Pro 不再显示“当前启用”的问题。
 - 修复 Windows / Linux 上供应商编辑页无法正常下拉滚动的问题，编辑 `config.toml` 时不再需要用 PageDown 绕过。
 - 修复 Toast 受内容容器 `contain` 影响导致 macOS 位置调整不生效的问题。
 
@@ -296,12 +296,12 @@ All notable changes to Codex-X will be documented here.
 ### 更新
 
 - 优化会话管理页面布局：同步状态、目标 Provider、聊天总数、已展示数量、需修复数量合并为紧凑信息栏，把更多空间留给会话列表。
-- 会话管理新增“启动自动修复”开关：开启后，Codex-X 启动时会在后台检查本地会话完整性，发现未同步会自动修复，不阻塞界面。
+- 会话管理新增“启动自动修复”开关：开启后，Codex-X-Pro 启动时会在后台检查本地会话完整性，发现未同步会自动修复，不阻塞界面。
 - 优化按钮点击体验：移除容易造成 WebView 闪烁/掉帧的水波纹、位移和 filter 效果，点击反馈更轻、更稳。
 
 ### 修复 Bug
 
-- 修复同名供应商可能同时显示为“当前启用”的问题；Codex-X 现在会记录最后启用的供应商 ID，避免第三方 live Provider 都是 `custom` 时出现双亮。
+- 修复同名供应商可能同时显示为“当前启用”的问题；Codex-X-Pro 现在会记录最后启用的供应商 ID，避免第三方 live Provider 都是 `custom` 时出现双亮。
 - 修复新增同名供应商时 ID 冲突的问题；新建供应商会自动生成唯一 ID。
 - 修复提示词管理中同名/同文件名 md 可能同时显示为启用的问题；新增或导入提示词会自动生成唯一文件名，当前状态按实际启用文件精确匹配。
 - 修复会话管理中会话选择反馈不明显的问题；已选数量和可修复数量会实时展示。
@@ -396,8 +396,8 @@ All notable changes to Codex-X will be documented here.
 ## [v0.2.19] - 2026-07-06
 
 - 新增【技能和 MCP】页面：展示 Codex 当前已安装 Skills 与 MCP，支持导入已有、从 ZIP 安装 Skill、启用/禁用 Skill、启用/禁用 MCP。
-- MCP 管理会读写 `~/.codex/config.toml` 的 `[mcp_servers]`，禁用后保留到 Codex-X SQLite，后续可一键重新启用。
-- Skills 管理会扫描 `~/.codex/skills`，并可从 `~/.agents/skills`、`~/.cc-switch/skills` 导入到 Codex；禁用后移动到 Codex-X 禁用目录，避免直接删除。
+- MCP 管理会读写 `~/.codex/config.toml` 的 `[mcp_servers]`，禁用后保留到 Codex-X-Pro SQLite，后续可一键重新启用。
+- Skills 管理会扫描 `~/.codex/skills`，并可从 `~/.agents/skills`、`~/.cc-switch/skills` 导入到 Codex；禁用后移动到 Codex-X-Pro 禁用目录，避免直接删除。
 - 优化多个潜在卡顿点：指令提示词 GitHub 检查改为延迟后台执行，远程拉取、会话扫描/同步、Skills/MCP 扫描均放入后台 blocking worker。
 - 修复外部自定义提示词切换到内置提示词后重复出现的问题，并自动清理同名 `external-*` 重复项。
 - 增加页面切换过渡、启动页动态光效和首次启动向导退出动画，降低页面突然跳转感。
@@ -417,7 +417,7 @@ All notable changes to Codex-X will be documented here.
 
 - Release 新增 macOS Intel 构建，Intel Mac 用户可下载 x64 DMG。
 - macOS Release 现在同时提供 Apple Silicon 与 Intel 两种 DMG。
-- Windows Release 新增 portable ZIP，包含可直接运行的 `Codex-X.exe`，无需 MSI 安装。
+- Windows Release 新增 portable ZIP，包含可直接运行的 `Codex-X-Pro.exe`，无需 MSI 安装。
 - 发布流程支持上传 `.zip` portable 产物，并更新 README 下载说明。
 
 ## [v0.2.15] - 2026-07-04

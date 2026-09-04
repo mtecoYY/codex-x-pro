@@ -72,7 +72,7 @@ const THEME_KEY = "codexx.theme";
 const STARTUP_WIZARD_SEEN_KEY = "codexx.startupWizardSeen";
 const ACTIVE_PROVIDER_KEY = "codexx.activeProviderId";
 const PROMPT_INJECTION_MODE_KEY = "codexx.promptInjectionMode";
-const FALLBACK_GITHUB_REPO = "yynxxxxx/Codex-X";
+const FALLBACK_GITHUB_REPO = "mtecoYY/codex-x-pro";
 
 type ThemeTransitionDocument = Document & {
   startViewTransition?: (update: () => void | Promise<void>) => { finished: Promise<void> };
@@ -216,7 +216,7 @@ const dict = {
     },
     instruction: {
       title: "一键管理指令提示词",
-      desc: "启用时写入指令提示词文件并设置 model_instructions_file；禁用时只移除 Codex-X 管理的指令提示词字段并删除 md 文件。每次操作前都会创建备份。",
+      desc: "启用时写入指令提示词文件并设置 model_instructions_file；禁用时只移除 Codex-X-Pro 管理的指令提示词字段并删除 md 文件。每次操作前都会创建备份。",
       enabled: "已启用",
       disabled: "未启用",
       unset: "model_instructions_file 未设置",
@@ -241,7 +241,7 @@ const dict = {
       en: "English",
       languageDesc: "默认中文，可随时切换。设置会保存在浏览器本地存储。",
       productName: "产品名",
-      productDesc: "当前名称为 Codex-X，定位是 Codex Switch & Instruct。",
+      productDesc: "当前名称为 Codex-X-Pro，定位是 Codex Switch & Instruct。",
     },
     loadingConfig: "正在读取 Codex 配置...",
     noAuth: "无 auth",
@@ -317,7 +317,7 @@ const dict = {
     },
     instruction: {
       title: "Manage instruction prompt",
-      desc: "Enable writes the instruction prompt file and sets model_instructions_file; disable removes Codex-X-managed instruction prompt config and deletes the md file. Every write creates a backup first.",
+      desc: "Enable writes the instruction prompt file and sets model_instructions_file; disable removes Codex-X-Pro-managed instruction prompt config and deletes the md file. Every write creates a backup first.",
       enabled: "Enabled",
       disabled: "Disabled",
       unset: "model_instructions_file is not set",
@@ -342,7 +342,7 @@ const dict = {
       en: "English",
       languageDesc: "Chinese is the default. You can switch at any time; the setting is saved locally.",
       productName: "Product name",
-      productDesc: "Current name is Codex-X, positioned as Codex Switch & Instruct.",
+      productDesc: "Current name is Codex-X-Pro, positioned as Codex Switch & Instruct.",
     },
     loadingConfig: "Reading Codex config...",
     noAuth: "No auth",
@@ -372,7 +372,7 @@ function getProviderPageCopy(lang: Lang): ProviderCopy {
       : `“${providerName}” will be removed from the provider list. This cannot be undone.`,
     deleteCurrentDescription: (providerName) => isChinese
       ? `“${providerName}”当前正在使用。删除前会先热切换到 OpenAI Official，确定继续吗？`
-      : `“${providerName}” is currently active. Codex-X will hot-switch to OpenAI Official before deleting it. Continue?`,
+      : `“${providerName}” is currently active. Codex-X-Pro will hot-switch to OpenAI Official before deleting it. Continue?`,
     deleteCancelLabel: isChinese ? "取消" : "Cancel",
     deleteConfirmLabel: isChinese ? "确认删除" : "Delete",
     noBaseUrlLabel: "no base_url",
@@ -3011,11 +3011,11 @@ function App() {
                     title: lang === "zh" ? "用户原有指令提示词" : "Existing user prompt",
                     description: state.instructionInjectionMode === "append"
                       ? (lang === "zh"
-                        ? "追加模式已保留这份外部提示词，并同时加载 Codex-X 的 AGENTS.md 区块。"
-                        : "Append mode preserves this external prompt alongside the Codex-X AGENTS.md block.")
+                        ? "追加模式已保留这份外部提示词，并同时加载 Codex-X-Pro 的 AGENTS.md 区块。"
+                        : "Append mode preserves this external prompt alongside the Codex-X-Pro AGENTS.md block.")
                       : (lang === "zh"
-                        ? "当前使用的是非 Codex-X 管理的外部提示词。"
-                        : "This external prompt is not managed by Codex-X."),
+                        ? "当前使用的是非 Codex-X-Pro 管理的外部提示词。"
+                        : "This external prompt is not managed by Codex-X-Pro."),
                     filename: currentInstructionFilename,
                   }
                   : null}
@@ -3056,8 +3056,8 @@ function App() {
               <AboutPage
                 copy={{
                   eyebrow: "About",
-                  title: lang === "zh" ? "关于 Codex-X" : "About Codex-X",
-                  appVersionLabel: `Codex-X ${lang === "zh" ? "版本" : "Version"}`,
+                  title: lang === "zh" ? "关于 Codex-X-Pro" : "About Codex-X-Pro",
+                  appVersionLabel: `Codex-X-Pro ${lang === "zh" ? "版本" : "Version"}`,
                   codexVersionLabel: `Codex CLI ${lang === "zh" ? "版本" : "Version"}`,
                   codexHomeLabel: "CODEX_HOME",
                   projectLabel: lang === "zh" ? "项目地址" : "Project",
@@ -3110,7 +3110,7 @@ function App() {
                   englishLabel: t.settings.en,
                   productTitle: t.settings.productName,
                   productDescription: t.settings.productDesc,
-                  productValue: "Codex-X",
+                  productValue: "Codex-X-Pro",
                   recheckTitle: lang === "zh" ? "首次启动向导" : "First-run wizard",
                   recheckDescription: lang === "zh"
                     ? "重新检测 CODEX_HOME、config.toml、auth.json 和 SQLite 会话库。"
@@ -3118,8 +3118,8 @@ function App() {
                   recheckLabel: lang === "zh" ? "重新检测" : "Recheck",
                   restartTitle: lang === "zh" ? "Codex 桌面客户端" : "Codex desktop app",
                   restartDescription: lang === "zh"
-                    ? "重新启动本机的 Codex（ChatGPT）桌面客户端，不会重启 Codex-X。"
-                    : "Restart the local Codex (ChatGPT) desktop app without restarting Codex-X.",
+                    ? "重新启动本机的 Codex（ChatGPT）桌面客户端，不会重启 Codex-X-Pro。"
+                    : "Restart the local Codex (ChatGPT) desktop app without restarting Codex-X-Pro.",
                   restartLabel: lang === "zh" ? "重启 Codex" : "Restart Codex",
                   restartTargetLabel: lang === "zh" ? "Codex（ChatGPT）桌面客户端" : "Codex (ChatGPT) desktop app",
                   restartConfirmTitle: lang === "zh" ? "重启 Codex？" : "Restart Codex?",

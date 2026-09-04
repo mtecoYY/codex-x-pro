@@ -88,6 +88,61 @@
   border-bottom: 1px solid var(--ui-border-subtle);
 }
 
+.cx-gateway-detail-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--ui-border-subtle);
+}
+
+.cx-gateway-detail-toolbar .cx-gateway-detail-controls {
+  padding: 0;
+  border-bottom: 0;
+}
+
+.cx-gateway-detail-actions,
+.cx-gateway-find {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.cx-gateway-find {
+  min-width: 240px;
+  padding: 3px 5px 3px 8px;
+  color: var(--cx-page-muted);
+  border: 1px solid var(--ui-border-subtle);
+  background: var(--ui-surface);
+}
+
+.cx-gateway-find input {
+  width: 130px;
+  min-width: 0;
+  padding: 5px 3px;
+  color: var(--ui-text);
+  border: 0;
+  outline: 0;
+  background: transparent;
+}
+
+.cx-gateway-find-count {
+  min-width: 36px;
+  color: var(--cx-page-muted);
+  font: 11px ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.cx-gateway-find-match {
+  padding: 1px 0;
+  color: inherit;
+  background: color-mix(in srgb, var(--ui-accent) 28%, transparent);
+}
+
+.cx-gateway-find-match--active {
+  background: color-mix(in srgb, var(--ui-accent) 62%, transparent);
+}
+
 .cx-gateway-detail-controls .ui-field {
   min-width: 180px;
 }
@@ -113,6 +168,14 @@
   font: 12px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
+.cx-gateway-load-more {
+  display: flex;
+  justify-content: center;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--ui-border-subtle);
+  background: var(--ui-surface-muted);
+}
+
 @media (max-width: 760px) {
   .cx-gateway-observe-head {
     align-items: flex-start;
@@ -122,5 +185,19 @@
   .cx-gateway-observe-actions {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .cx-gateway-detail-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .cx-gateway-detail-actions,
+  .cx-gateway-find {
+    width: 100%;
+  }
+
+  .cx-gateway-find input {
+    flex: 1;
   }
 }

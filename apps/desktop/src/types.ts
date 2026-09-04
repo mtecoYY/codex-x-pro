@@ -23,10 +23,25 @@ export type GatewayProcessState = {
 export type GatewayObserveState = {
   capture_enabled: boolean;
   capture_limit: number;
+  capture_total_bytes: number;
+  capture_record_max_bytes: number;
+  stored_bytes: number;
   retained_count: number;
   evicted_count: number;
   capture_dropped_count: number;
   next_seq: number;
+};
+
+export type GatewayPacketResponse = {
+  id: number;
+  probe: string;
+  offset: number;
+  length: number;
+  total_bytes: number;
+  original_bytes: number;
+  text: string;
+  next_offset: number;
+  complete: boolean;
 };
 
 export type GatewayObserveRow = {
@@ -39,6 +54,7 @@ export type GatewayObserveRow = {
     first_token_ms?: number | null;
     tokens?: number | null;
     tokens_status?: "available" | "unavailable";
+    tokens_source?: string | null;
     tokens_error?: string | null;
   created_at?: number | null;
   ok?: boolean;

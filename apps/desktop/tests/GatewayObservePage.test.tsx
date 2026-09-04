@@ -12,12 +12,18 @@ vi.mock("@tauri-apps/api/core", () => ({
 class FakeEventSource {
   static instances: FakeEventSource[] = [];
   closed = false;
+  listeners = new Map<string, (event: MessageEvent) => void>();
 
   constructor(public url: string) {
     FakeEventSource.instances.push(this);
   }
 
-  addEventListener() {}
+  addEventListener(type: string, listener: (event: MessageEvent) => void) {
+    this.listeners.set(type, listener);
+  }
+  emit(type: string, data: unknown) {
+    this.listeners.get(type)?.({ data: JSON.stringify(data) } as MessageEvent);
+  }
   close() {
     this.closed = true;
   }
@@ -37,6 +43,9 @@ const managedState = {
 const observeState = {
   capture_enabled: false,
   capture_limit: 100,
+  capture_total_bytes: 2 * 1024 * 1024 * 1024,
+  capture_record_max_bytes: 1024 * 1024 * 1024,
+  stored_bytes: 0,
   retained_count: 0,
   evicted_count: 0,
   capture_dropped_count: 0,
@@ -216,5 +225,71 @@ describe("GatewayObservePage", () => {
     await waitFor(() => expect(FakeEventSource.instances.length).toBeGreaterThan(1));
     expect(screen.getByText("test-model")).toBeTruthy();
     view.unmount();
+  });
+
+  it("appends SSE rows without replacing existing rows", async () => {
+    const first = { id: 1, channel: "one", status_code: 200, model: "first", ok: true };
+    const second = { id: 2, channel: "two", status_code: 200, model: "second", ok: true };
+    invoke.mockImplementation(async (command: string, args?: { input?: { path?: string } }) => {
+      if (command === "get_gateway_process_state") return managedState;
+      const path = args?.input?.path;
+      if (path === "/observe/state") return { ...observeState, capture_enabled: true, retained_count: 2 };
+      if (path === "/observe/requests") return { requests: [first] };
+      return {};
+    });
+    render(<GatewayObservePage lang="en" />);
+    expect(await screen.findByText("first")).toBeTruthy();
+    const source = FakeEventSource.instances.at(-1)!;
+    source.emit("request", second);
+    expect(await screen.findByText("second")).toBeTruthy();
+    expect(screen.getByText("first")).toBeTruthy();
+  });
+
+  it("copies the complete current detail view and supports find", async () => {
+    const detail = { probes: { global_entry_probe: { raw_text: "POST /v1/responses\r\n\r\nhello hello", request_body_json: { messages: [{ role: "user", content: "hello" }] }, response_body_json: null } } };
+    const row = { id: 1, channel: "synthetic", status_code: 200, model: "find-model", ok: true };
+    const clipboard = { writeText: vi.fn(async () => undefined) };
+    Object.assign(navigator, { clipboard });
+    invoke.mockImplementation(async (command: string, args?: { input?: { path?: string } }) => {
+      if (command === "get_gateway_process_state") return managedState;
+      const path = args?.input?.path;
+      if (path === "/observe/state") return { ...observeState, retained_count: 1 };
+      if (path === "/observe/requests") return { requests: [row] };
+      if (path === "/observe/request/1") return detail;
+      return {};
+    });
+    render(<GatewayObservePage lang="en" />);
+    fireEvent.click(await screen.findByText("find-model"));
+    const find = await screen.findByRole("textbox", { name: "Find in details" });
+    fireEvent.change(find, { target: { value: "hello" } });
+    expect(screen.getByText("1/2")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Copy all content" }));
+    await waitFor(() => expect(clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining("hello hello")));
+  });
+
+  it("loads archived packet content in chunks on demand", async () => {
+    const detail = {
+      id: 1,
+      archive_status: "archived",
+      packet_sizes: { global_entry_probe: { total_bytes: 9, original_bytes: 9 } },
+      probes: { global_entry_probe: { raw_text: "head", retained_bytes: 4, original_bytes: 9, raw_text_truncated: true } },
+    };
+    const row = { id: 1, channel: "synthetic", status_code: 200, model: "chunk-model", ok: true };
+    invoke.mockImplementation(async (command: string, args?: { input?: { path?: string } }) => {
+      if (command === "get_gateway_process_state") return managedState;
+      const path = args?.input?.path;
+      if (path === "/observe/state") return { ...observeState, retained_count: 1 };
+      if (path === "/observe/requests") return { requests: [row] };
+      if (path === "/observe/request/1") return detail;
+      if (path?.startsWith("/observe/packet/1")) return { id: 1, probe: "global_entry_probe", offset: 4, length: 5, total_bytes: 9, original_bytes: 9, text: " tail", next_offset: 9, complete: true };
+      return {};
+    });
+    render(<GatewayObservePage lang="en" />);
+    fireEvent.click(await screen.findByText("chunk-model"));
+    fireEvent.click(await screen.findByRole("button", { name: /Load more/ }));
+    await waitFor(() => expect(screen.getByText("head tail")).toBeTruthy());
+    expect(invoke).toHaveBeenCalledWith("gateway_request", expect.objectContaining({
+      input: expect.objectContaining({ path: expect.stringContaining("/observe/packet/1?probe=global_entry_probe&offset=4") }),
+    }));
   });
 });

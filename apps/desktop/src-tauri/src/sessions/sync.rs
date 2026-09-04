@@ -312,7 +312,7 @@ pub(super) fn acquire_session_maintenance_lock(codex_dir: &Path) -> Result<Sessi
     let path = tmp_dir.join("session-maintenance.lock");
     if path.is_dir() {
         return Err(CodexxError::Config(format!(
-            "检测到旧版会话维护锁，请确认没有其他 Codex-X 正在维护会话后删除: {}",
+            "检测到旧版会话维护锁，请确认没有其他 Codex-X-Pro 正在维护会话后删除: {}",
             path.display()
         )));
     }

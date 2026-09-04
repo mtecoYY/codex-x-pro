@@ -118,7 +118,7 @@ pub(crate) fn build_skills_mcp_state_inner(config_dir: Option<String>) -> Result
     if let Err(e) = scan_skill_dir(
         &disabled_dir,
         false,
-        "Codex-X 已禁用",
+        "Codex-X-Pro 已禁用",
         &mut skills,
         &mut seen,
     ) {
@@ -137,7 +137,7 @@ pub(crate) fn build_skills_mcp_state_inner(config_dir: Option<String>) -> Result
             name,
             transport,
             enabled,
-            source: "Codex-X".to_string(),
+            source: "Codex-X-Pro".to_string(),
             summary,
             note: None,
             command,

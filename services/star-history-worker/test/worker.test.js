@@ -32,11 +32,11 @@ class MemoryKv {
 
 function testEnv(dataset) {
   const kv = new MemoryKv();
-  if (dataset) kv.values.set("repository:yynxxxxx/codex-x", { value: JSON.stringify(dataset), metadata: null });
+  if (dataset) kv.values.set("repository:mtecoyy/codex-x-pro", { value: JSON.stringify(dataset), metadata: null });
   return {
     STAR_HISTORY: kv,
-    ALLOWED_REPOSITORIES: "yynxxxxx/Codex-X",
-    REPOSITORY_ALIASES: "codex-x=yynxxxxx/Codex-X",
+    ALLOWED_REPOSITORIES: "mtecoYY/codex-x-pro",
+    REPOSITORY_ALIASES: "codex-x-pro=mtecoYY/codex-x-pro,codex-x=mtecoYY/codex-x-pro",
     INGEST_TOKEN: "test-ingest",
     WEBHOOK_SECRET: "test-webhook",
   };
@@ -44,7 +44,7 @@ function testEnv(dataset) {
 
 function baseline(checkedAt = new Date().toISOString()) {
   return buildBaseline({
-    repository: "yynxxxxx/Codex-X",
+    repository: "mtecoYY/codex-x-pro",
     createdAt: "2026-01-01T00:00:00Z",
     currentStars: 10,
     checkedAt,
@@ -54,13 +54,13 @@ function baseline(checkedAt = new Date().toISOString()) {
 
 test("chart responses support ETag revalidation with multiple validators", async () => {
   const env = testEnv(baseline());
-  const first = await worker.fetch(new Request("https://example.test/v1/charts/codex-x.svg"), env);
+  const first = await worker.fetch(new Request("https://example.test/v1/charts/codex-x-pro.svg"), env);
   const etag = first.headers.get("ETag");
   assert.equal(first.status, 200);
   assert.ok(etag?.startsWith('W/"v2-'));
   assert.match(await first.text(), /^<svg/);
 
-  const second = await worker.fetch(new Request("https://example.test/v1/charts/codex-x.svg", {
+  const second = await worker.fetch(new Request("https://example.test/v1/charts/codex-x-pro.svg", {
     headers: { "If-None-Match": `W/"other", ${etag}` },
   }), env);
   assert.equal(second.status, 304);
@@ -79,7 +79,7 @@ test("health returns 503 when the last authoritative refresh is stale", async ()
 test("refresh ingests an Actions snapshot and stores aggregated history", async () => {
   const env = testEnv();
   const payload = {
-    repository: "yynxxxxx/Codex-X",
+    repository: "mtecoYY/codex-x-pro",
     createdAt: "2026-01-01T00:00:00Z",
     checkedAt: "2026-01-03T00:00:00Z",
     currentStars: 2,
@@ -98,7 +98,7 @@ test("refresh ingests an Actions snapshot and stores aggregated history", async 
     body: JSON.stringify(payload),
   }), env);
   const result = await response.json();
-  const stored = await env.STAR_HISTORY.get("repository:yynxxxxx/codex-x", "json");
+  const stored = await env.STAR_HISTORY.get("repository:mtecoyy/codex-x-pro", "json");
 
   assert.equal(response.status, 200);
   assert.equal(result.stars, 2);
@@ -110,7 +110,7 @@ test("refresh ingests an Actions snapshot and stores aggregated history", async 
 test("refresh reconciles an existing baseline without Stargazer details", async () => {
   const env = testEnv(baseline("2026-01-02T00:00:00Z"));
   const payload = {
-    repository: "yynxxxxx/Codex-X",
+    repository: "mtecoYY/codex-x-pro",
     createdAt: "2026-01-01T00:00:00Z",
     checkedAt: "2026-01-03T00:00:00Z",
     currentStars: 11,
@@ -123,7 +123,7 @@ test("refresh reconciles an existing baseline without Stargazer details", async 
     },
     body: JSON.stringify(payload),
   }), env);
-  const stored = await env.STAR_HISTORY.get("repository:yynxxxxx/codex-x", "json");
+  const stored = await env.STAR_HISTORY.get("repository:mtecoyy/codex-x-pro", "json");
 
   assert.equal(response.status, 200);
   assert.equal(stored.currentStars, 11);
@@ -133,12 +133,12 @@ test("refresh reconciles an existing baseline without Stargazer details", async 
 test("successful refresh schedules GitHub Camo purges", async () => {
   const env = testEnv(baseline("2026-01-02T00:00:00Z"));
   env.CAMO_PURGE_URLS = [
-    "yynxxxxx/Codex-X",
+    "mtecoYY/codex-x-pro",
     "https://camo.githubusercontent.com/dark/chart",
     "https://camo.githubusercontent.com/light/chart",
   ].join("|");
   const payload = {
-    repository: "yynxxxxx/Codex-X",
+    repository: "mtecoYY/codex-x-pro",
     createdAt: "2026-01-01T00:00:00Z",
     checkedAt: "2026-01-03T00:00:00Z",
     currentStars: 11,
@@ -181,7 +181,7 @@ test("webhook events use unique keys and duplicate deliveries stay idempotent", 
   const payload = JSON.stringify({
     action: "created",
     starred_at: "2026-01-02T00:01:00Z",
-    repository: { full_name: "yynxxxxx/Codex-X", stargazers_count: 11 },
+    repository: { full_name: "mtecoYY/codex-x-pro", stargazers_count: 11 },
   });
   const signature = createHmac("sha256", env.WEBHOOK_SECRET).update(payload).digest("hex");
   const headers = {
@@ -201,7 +201,7 @@ test("webhook events use unique keys and duplicate deliveries stay idempotent", 
     headers,
     body: payload,
   }), env);
-  const data = await worker.fetch(new Request("https://example.test/v1/data/codex-x"), env);
+  const data = await worker.fetch(new Request("https://example.test/v1/data/codex-x-pro"), env);
   const dataset = await data.json();
 
   assert.equal(first.status, 202);

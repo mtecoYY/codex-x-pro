@@ -577,7 +577,7 @@ fn get_about_info_inner(config_dir: Option<String>) -> Result<AboutInfo> {
     #[cfg(target_os = "windows")]
     let native_updater_supported = std::env::current_exe()
         .ok()
-        .and_then(|path| path.parent().map(|parent| parent.join("Codex-X.portable")))
+        .and_then(|path| path.parent().map(|parent| parent.join("Codex-X-Pro.portable")))
         .map(|marker| !marker.is_file())
         .unwrap_or(true);
     #[cfg(target_os = "linux")]
@@ -590,8 +590,8 @@ fn get_about_info_inner(config_dir: Option<String>) -> Result<AboutInfo> {
         app_version: env!("CARGO_PKG_VERSION").to_string(),
         codex_version: platform::detect_codex_version(),
         codex_dir: codex_dir.display().to_string(),
-        project_url: "https://github.com/yynxxxxx/Codex-X".to_string(),
-        github_repo: "yynxxxxx/Codex-X".to_string(),
+        project_url: "https://github.com/mtecoYY/codex-x-pro".to_string(),
+        github_repo: "mtecoYY/codex-x-pro".to_string(),
         native_updater_supported,
     })
 }
@@ -1180,9 +1180,9 @@ fn disable_instruction_inner(
         if removed {
             "已禁用指令提示词".to_string()
         } else if current.is_some() {
-            "当前使用的是用户自己的提示词，Codex-X 未做修改".to_string()
+            "当前使用的是用户自己的提示词，Codex-X-Pro 未做修改".to_string()
         } else {
-            "当前没有启用 Codex-X 提示词".to_string()
+            "当前没有启用 Codex-X-Pro 提示词".to_string()
         },
         backup_id,
     )
@@ -1214,7 +1214,7 @@ fn disable_external_instruction_inner(config_dir: Option<String>) -> Result<Acti
     if let Some(value) = current.as_deref() {
         if prompt_template_key_for_instruction(value)?.is_some() {
             return Err(CodexxError::Config(
-                "当前是 Codex-X 管理的提示词，请使用普通禁用按钮".to_string(),
+                "当前是 Codex-X-Pro 管理的提示词，请使用普通禁用按钮".to_string(),
             ));
         }
     }
@@ -1588,7 +1588,7 @@ pub fn run() {
             gateway_request,
         ])
         .build(tauri::generate_context!())
-        .expect("error while building Codex-X");
+        .expect("error while building Codex-X-Pro");
 
     app.run(desktop_lifecycle::handle_run_event);
 }

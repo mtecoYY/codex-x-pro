@@ -29,6 +29,8 @@ export const DEFAULT_SCRIPT_TEST_RAW_TEXT =
 
 export type GatewayObserveListResponse = {
   requests?: GatewayObserveRow[];
+  history_gap?: boolean;
+  next_seq?: number;
 };
 
 export type GatewayScriptListResponse = {

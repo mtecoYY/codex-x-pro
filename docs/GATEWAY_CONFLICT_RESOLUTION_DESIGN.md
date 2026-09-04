@@ -2,7 +2,7 @@
 
 ## 1. 文档目的
 
-本文汇总 Codex-X 本地网关与 config.toml 配置写入相关的现状、问题和改进方案，重点讨论：
+本文汇总 Codex-X-Pro 本地网关与 config.toml 配置写入相关的现状、问题和改进方案，重点讨论：
 
 - 为什么网关需要保存启动前配置和投影配置；
 - 网关写入流程与其他模块写入流程的区别；
@@ -53,7 +53,7 @@ Codex -> 127.0.0.1:<port>/v1 -> 本地网关 -> 真实 Provider
 停止流程目前大致为：
 
 1. 读取持久化网关模式；
-2. 验证运行中的网关仍由 Codex-X 管理；
+2. 验证运行中的网关仍由 Codex-X-Pro 管理；
 3. 验证当前 config.toml 的 SHA-256 等于启动后投影配置的 SHA-256；
 4. 从网关运行时读取 Provider 和提示词状态；
 5. 终止 watchdog 和网关进程；
@@ -83,7 +83,7 @@ config.toml 已被外部修改，拒绝覆盖并保持网关模式
 启动网关 -> 投影 config.toml -> 网关运行数小时 -> 停止网关 -> 恢复直连配置
 ~~~
 
-Codex-X 进程退出后，watchdog 仍可能继续维持网关。因此网关不能只依赖内存中的回滚对象，必须把启动前快照和运行模式写到磁盘，供重启、异常退出和后续停止恢复使用。
+Codex-X-Pro 进程退出后，watchdog 仍可能继续维持网关。因此网关不能只依赖内存中的回滚对象，必须把启动前快照和运行模式写到磁盘，供重启、异常退出和后续停止恢复使用。
 
 所以，网关的“持久化快照”是长事务生命周期带来的特殊需求；它不是另一套完全独立的底层文件写入技术。
 
@@ -91,7 +91,7 @@ Codex-X 进程退出后，watchdog 仍可能继续维持网关。因此网关不
 
 普通 Provider、提示词、备份和恢复模块主要复用 live_config：
 
-- acquire_live_config_lock()：防止两个 Codex-X 操作同时写 live 配置；
+- acquire_live_config_lock()：防止两个 Codex-X-Pro 操作同时写 live 配置；
 - read_file_snapshot()：读取写入前快照；
 - atomic_write_if_unchanged()：只有当前文件仍等于预期快照时才写入；
 - apply_file_change()：记录一次文件变更；
@@ -180,9 +180,9 @@ approval_policy = "never"
 
 ### 6.3 外部提示词文件和 AGENTS.md
 
-- Replace 模式：网关运行时提示词覆盖 Codex-X 管理的目标 Markdown 文件，并恢复 `model_instructions_file`；
-- Append 模式：只替换 `AGENTS.md` 中 Codex-X 的 BEGIN/END 管理区块，区块外用户内容原样保留；
-- 禁用提示词：只移除 Codex-X 管理的提示词指针、目标文件或管理区块，不能删除无关用户内容；
+- Replace 模式：网关运行时提示词覆盖 Codex-X-Pro 管理的目标 Markdown 文件，并恢复 `model_instructions_file`；
+- Append 模式：只替换 `AGENTS.md` 中 Codex-X-Pro 的 BEGIN/END 管理区块，区块外用户内容原样保留；
+- 禁用提示词：只移除 Codex-X-Pro 管理的提示词指针、目标文件或管理区块，不能删除无关用户内容；
 - 网关临时生成的提示词文件，如果启动前不存在，停止时按明确策略保留或删除，并记录在停止前备份中。
 
 ### 6.4 用户手动修改托管字段时的规则
@@ -192,10 +192,10 @@ approval_policy = "never"
 - Provider 和模型；
 - 真实 Provider URL；
 - 当前 Provider 的托管认证键；
-- Codex-X 管理的提示词文件；
-- `AGENTS.md` 中 Codex-X 的管理区块。
+- Codex-X-Pro 管理的提示词文件；
+- `AGENTS.md` 中 Codex-X-Pro 的管理区块。
 
-停止时这些内容由网关运行时确定性覆盖。产品界面必须提前说明这一行为，并建议用户在网关模式中通过 Codex-X 修改这些设置。
+停止时这些内容由网关运行时确定性覆盖。产品界面必须提前说明这一行为，并建议用户在网关模式中通过 Codex-X-Pro 修改这些设置。
 
 ## 7. 停止流程
 
@@ -225,9 +225,9 @@ approval_policy = "never"
 
 | 持久化意图/进程所有权 | `/state` | 返回状态 | 用户可见错误 |
 | --- | --- | --- | --- |
-| 无 `desired_mode = gateway`，无 Codex-X 子进程 | 不可达 | `stopped`，`degraded = false` | 无 |
+| 无 `desired_mode = gateway`，无 Codex-X-Pro 子进程 | 不可达 | `stopped`，`degraded = false` | 无 |
 | `desired_mode = gateway` 仍有效 | 不可达 | `degraded = true` | `CONTROL_API_UNAVAILABLE` |
-| Codex-X 管理的子进程仍存活 | 不可达 | `degraded = true` | `CONTROL_API_UNAVAILABLE` |
+| Codex-X-Pro 管理的子进程仍存活 | 不可达 | `degraded = true` | `CONTROL_API_UNAVAILABLE` |
 | 已存在 `degraded.json` | 不可达 | `degraded = true` | 优先显示持久化恢复错误 |
 
 操作错误由停止命令本身返回，例如文件回滚或网关补偿恢复失败；状态错误只描述停止命令结束后仍持续存在的异常。UI 不得把普通 stopped 状态中的一次探测失败显示为持续性错误，只有 `degraded = true` 时才展示 `processState.error`。
@@ -381,12 +381,12 @@ Codex 内部指令
   + 用户当前输入
 ~~~
 
-实际优先级和重新读取时机由 Codex 版本决定；Codex-X 不负责解析这些指令，只负责维护文件和配置指针。修改后通常需要新建或重新打开 session 才能确保生效。
+实际优先级和重新读取时机由 Codex 版本决定；Codex-X-Pro 不负责解析这些指令，只负责维护文件和配置指针。修改后通常需要新建或重新打开 session 才能确保生效。
 
-Codex-X 当前支持两种管理方式：
+Codex-X-Pro 当前支持两种管理方式：
 
 - Replace：把选中的 Markdown 文件设置为 `model_instructions_file`，替换原来的主要提示词入口；
-- Append：不替换原有外部提示词，而是把 Codex-X 管理内容写入 `AGENTS.md` 的受管区块。
+- Append：不替换原有外部提示词，而是把 Codex-X-Pro 管理内容写入 `AGENTS.md` 的受管区块。
 
 ### 13.2 AGENTS.md
 
@@ -399,16 +399,16 @@ model_instructions_file：配置级、通常范围较广的持久化指令
 AGENTS.md：项目/目录级、随工作目录变化的指令
 ~~~
 
-当前 Codex-X 的 `agents_path(codex_dir)` 指向 Codex 配置目录下的 `AGENTS.md`。这通常属于用户级或全局级文件，可能影响使用同一 Codex 配置目录的多个项目。因此不能把它简单当作某个项目的普通 Markdown 文件。
+当前 Codex-X-Pro 的 `agents_path(codex_dir)` 指向 Codex 配置目录下的 `AGENTS.md`。这通常属于用户级或全局级文件，可能影响使用同一 Codex 配置目录的多个项目。因此不能把它简单当作某个项目的普通 Markdown 文件。
 
 `AGENTS.md` 还包含两类内容：
 
 ~~~text
 用户自己的规则
-Codex-X 使用 BEGIN/END 标记维护的受管区块
+Codex-X-Pro 使用 BEGIN/END 标记维护的受管区块
 ~~~
 
-禁用或停止网关时，只能删除或替换 Codex-X 自己的受管区块，必须保留其他用户内容。
+禁用或停止网关时，只能删除或替换 Codex-X-Pro 自己的受管区块，必须保留其他用户内容。
 
 ### 13.3 网关为什么暂时接管提示词
 
@@ -422,7 +422,7 @@ Codex 原生加载一次
 因此网关启动时需要保存原始文件和配置状态，并做中性投影：
 
 - Replace 模式：暂时移除 `model_instructions_file`，把内容提交给网关运行时；
-- Append 模式：暂时移除 `AGENTS.md` 中 Codex-X 的受管区块，但保留用户其他内容；
+- Append 模式：暂时移除 `AGENTS.md` 中 Codex-X-Pro 的受管区块，但保留用户其他内容；
 - 网关关闭时：按运行时最新提示词恢复文件和指针。
 
 这里的“接管”只是为了避免重复注入，不代表 Codex 原生不支持这些文件。
@@ -438,7 +438,7 @@ Codex 原生加载一次
 
 `AGENTS.md`：
 
-1. 只识别并替换 Codex-X 的 `BEGIN/END` 受管区块；区块之外的所有用户内容以停止时的当前文件为准。
+1. 只识别并替换 Codex-X-Pro 的 `BEGIN/END` 受管区块；区块之外的所有用户内容以停止时的当前文件为准。
 2. 如果受管区块被用户修改，仍按受管区块所有权规则由运行时状态覆盖；不会因此拒绝停止。
 3. 如果标记缺失、重复或结构损坏，无法安全定位受管区块，则停止失败并保持网关运行；用户可以先根据停止前备份修复文件。
 

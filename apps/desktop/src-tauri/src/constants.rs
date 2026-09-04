@@ -23,12 +23,12 @@ pub(crate) const AGENTS_MANAGED_BEGIN: &str = "<!-- CODEX-X:INSTRUCTIONS:BEGIN -
 pub(crate) const AGENTS_MANAGED_END: &str = "<!-- CODEX-X:INSTRUCTIONS:END -->";
 pub(crate) const AGENTS_TEMPLATE_PREFIX: &str = "<!-- CODEX-X:TEMPLATE:";
 pub(crate) const JSDELIVR_EXAMPLES_API: &str =
-    "https://data.jsdelivr.com/v1/packages/gh/yynxxxxx/Codex-X@main?structure=flat";
+    "https://data.jsdelivr.com/v1/packages/gh/mtecoYY/codex-x-pro@main?structure=flat";
 pub(crate) const JSDELIVR_EXAMPLES_BASE: &str =
-    "https://cdn.jsdelivr.net/gh/yynxxxxx/Codex-X@main/examples/";
+    "https://cdn.jsdelivr.net/gh/mtecoYY/codex-x-pro@main/examples/";
 pub(crate) const GITHUB_EXAMPLES_API: &str =
-    "https://api.github.com/repos/yynxxxxx/Codex-X/contents/examples?ref=main";
+    "https://api.github.com/repos/mtecoYY/codex-x-pro/contents/examples?ref=main";
 pub(crate) const GITHUB_EXAMPLES_BASE: &str =
-    "https://raw.githubusercontent.com/yynxxxxx/Codex-X/main/examples/";
+    "https://raw.githubusercontent.com/mtecoYY/codex-x-pro/main/examples/";
 
 pub(crate) const MAX_SKILL_ZIP_BYTES: u64 = 20 * 1024 * 1024;

@@ -362,6 +362,7 @@ export default {
       return jsonResponse({
         service: "Codex Star History",
         charts: {
+          "codex-x-pro": "/v1/charts/codex-x-pro.svg",
           "codex-x": "/v1/charts/codex-x.svg",
           "codex-5-5": "/v1/charts/codex-5-5.svg",
         },

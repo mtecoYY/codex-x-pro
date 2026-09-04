@@ -29,7 +29,7 @@ fn remove_markdown_path(table: &mut Table, key: &str) -> Option<Item> {
     }
 }
 
-/// Repairs prompt paths appended by older Codex-X versions after a `[tui]`
+/// Repairs prompt paths appended by older Codex-X-Pro versions after a `[tui]`
 /// header. Only the exact legacy keys with Markdown path values are touched.
 #[cfg(test)]
 pub(crate) fn migrate_legacy_prompt_config(codex_dir: &Path) -> Result<bool> {

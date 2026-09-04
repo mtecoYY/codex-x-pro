@@ -465,7 +465,7 @@ fn snapshot_state(
             path.display()
         )));
     }
-    let source = "Codex-X 官方配置快照".to_string();
+    let source = "Codex-X-Pro 官方配置快照".to_string();
     let Some(auth) = snapshot.auth else {
         return Ok(SnapshotState::Reset(OfficialConfigCandidate {
             auth: None,
@@ -544,10 +544,10 @@ fn latest_official_backup(codex_dir: &Path) -> Result<Option<OfficialConfigCandi
         let Ok(Some(auth)) = read_auth_value(&dir.join("auth.json")) else {
             continue;
         };
-        // Old Codex-X versions could mark config.toml as official while leaving
+        // Old Codex-X-Pro versions could mark config.toml as official while leaving
         // a proxy API key in auth.json. Historical auto-recovery therefore only
         // trusts unambiguous ChatGPT login backups. Official API keys remain
-        // supported through an explicit Codex-X snapshot/save.
+        // supported through an explicit Codex-X-Pro snapshot/save.
         if !is_chatgpt_auth(&auth) {
             continue;
         }
@@ -568,7 +568,7 @@ fn latest_official_backup(codex_dir: &Path) -> Result<Option<OfficialConfigCandi
                 auth: Some(auth),
                 config_text,
                 model,
-                source: format!("Codex-X 历史备份 {created_at}"),
+                source: format!("Codex-X-Pro 历史备份 {created_at}"),
             },
         ))
 }
@@ -654,7 +654,7 @@ pub(crate) fn official_config_candidate(
                 return complete_candidate_config(codex_dir, live, Some(&candidate)).map(Some);
             }
             // Never let an API-key-only live file silently downgrade a trusted
-            // OAuth snapshot. Older Codex-X builds could leave exactly that
+            // OAuth snapshot. Older Codex-X-Pro builds could leave exactly that
             // polluted state while config.toml already pointed at OpenAI.
             if candidate.auth.as_ref().is_some_and(is_chatgpt_auth) {
                 return complete_candidate_config(codex_dir, candidate, None).map(Some);

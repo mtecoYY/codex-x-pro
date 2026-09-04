@@ -165,7 +165,7 @@ export function GatewayPage({ lang, configDir = "", active = true }: Props) {
           </div>
           <p>
             {externalGateway
-              ? gatewayText(lang, "Codex-X 未进入网关模式；外部网关不受 Codex-X 管理。", "Codex-X is not in gateway mode; the external gateway is not managed by Codex-X.")
+              ? gatewayText(lang, "Codex-X-Pro 未进入网关模式；外部网关不受 Codex-X-Pro 管理。", "Codex-X-Pro is not in gateway mode; the external gateway is not managed by Codex-X-Pro.")
               : routeDisconnected
                 ? gatewayText(lang, "网关进程和看门狗仍在运行，但 Codex 当前配置未指向本地网关；未覆盖外部配置。", "The gateway process and watchdog are running, but Codex is not routed through the local gateway; the external configuration was not overwritten.")
                 : gatewayText(lang, "网关守护和运行时提交状态来自实际网关状态。", "Protection and runtime submission status come from the actual gateway state.")}
@@ -179,13 +179,13 @@ export function GatewayPage({ lang, configDir = "", active = true }: Props) {
       {!managedGateway && (
         <div className="cx-gateway-disabled-note">
           {externalGateway
-            ? gatewayText(lang, "检测到外部网关运行中，Codex-X 未接管。请修改监听端口后启动 Codex-X 网关；保持当前端口启动会返回端口冲突。", "An external gateway is running and is not managed by Codex-X. Change the listen port before starting the Codex-X gateway; using the current port will report a port conflict.")
+            ? gatewayText(lang, "检测到外部网关运行中，Codex-X-Pro 未接管。请修改监听端口后启动 Codex-X-Pro 网关；保持当前端口启动会返回端口冲突。", "An external gateway is running and is not managed by Codex-X-Pro. Change the listen port before starting the Codex-X-Pro gateway; using the current port will report a port conflict.")
             : gatewayText(lang, "实时请求观测和用户脚本处理器需要先进入网关模式。", "Live observation and user script processors require gateway mode.")}
         </div>
       )}
       {routeDisconnected && (
         <div className="cx-gateway-disabled-note">
-          {gatewayText(lang, "网关进程仍由 Codex-X 管理，但当前 Codex 配置已被外部修改。为避免覆盖该配置，实时观测、用户脚本和网关热更新暂不可用。", "The gateway process is still managed by Codex-X, but the current Codex configuration was changed externally. Live observation, user scripts, and gateway hot updates are disabled to avoid overwriting that configuration.")}
+          {gatewayText(lang, "网关进程仍由 Codex-X-Pro 管理，但当前 Codex 配置已被外部修改。为避免覆盖该配置，实时观测、用户脚本和网关热更新暂不可用。", "The gateway process is still managed by Codex-X-Pro, but the current Codex configuration was changed externally. Live observation, user scripts, and gateway hot updates are disabled to avoid overwriting that configuration.")}
         </div>
       )}
       {(error || processError) && <div className="cx-gateway-error" role="alert">{error || processError}</div>}

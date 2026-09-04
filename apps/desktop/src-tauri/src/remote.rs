@@ -2,7 +2,7 @@ use crate::error::{CodexxError, Result};
 use std::sync::OnceLock;
 use std::time::Duration;
 
-const REMOTE_USER_AGENT: &str = "Codex-X";
+const REMOTE_USER_AGENT: &str = "Codex-X-Pro";
 const REMOTE_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, Copy)]

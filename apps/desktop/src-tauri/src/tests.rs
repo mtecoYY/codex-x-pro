@@ -726,7 +726,7 @@ fn github_catalog_discovers_new_markdown_without_a_hardcoded_id() {
                 name: "brand-new-prompt.md".to_string(),
                 kind: "file".to_string(),
                 download_url: Some(
-                    "https://raw.githubusercontent.com/yynxxxxx/Codex-X/main/examples/brand-new-prompt.md"
+                    "https://raw.githubusercontent.com/mtecoYY/codex-x-pro/main/examples/brand-new-prompt.md"
                         .to_string(),
                 ),
             },
@@ -739,7 +739,7 @@ fn github_catalog_discovers_new_markdown_without_a_hardcoded_id() {
                 name: "BRAND-NEW-PROMPT.MD".to_string(),
                 kind: "file".to_string(),
                 download_url: Some(
-                    "https://raw.githubusercontent.com/yynxxxxx/Codex-X/main/examples/BRAND-NEW-PROMPT.MD"
+                    "https://raw.githubusercontent.com/mtecoYY/codex-x-pro/main/examples/BRAND-NEW-PROMPT.MD"
                         .to_string(),
                 ),
             },
@@ -804,11 +804,11 @@ fn prompt_download_sources_are_cdn_first_and_encode_the_filename() {
     assert_eq!(sources.len(), 2);
     assert_eq!(
         sources[0],
-        format!("https://cdn.jsdelivr.net/gh/yynxxxxx/Codex-X@main/examples/{encoded}")
+        format!("https://cdn.jsdelivr.net/gh/mtecoYY/codex-x-pro@main/examples/{encoded}")
     );
     assert_eq!(
         sources[1],
-        format!("https://raw.githubusercontent.com/yynxxxxx/Codex-X/main/examples/{encoded}")
+        format!("https://raw.githubusercontent.com/mtecoYY/codex-x-pro/main/examples/{encoded}")
     );
 }
 
@@ -1967,7 +1967,7 @@ fn polluted_official_live_api_key_does_not_replace_saved_oauth() {
         providers::capture_live_chatgpt_config(&codex_dir).expect("capture trusted OAuth snapshot")
     );
 
-    // Older Codex-X builds could leave this mixed state after a switch.
+    // Older Codex-X-Pro builds could leave this mixed state after a switch.
     write_json(
         &auth_path(&codex_dir),
         &json!({"OPENAI_API_KEY": "sk-stale-proxy", "auth_mode": "apikey"}),
@@ -4170,7 +4170,7 @@ fn provider_sync_rewrites_every_session_meta_and_preserves_item_ids() {
 
     let metadata = fs::read_to_string(PathBuf::from(&result.backup_dir).join("metadata.json"))
         .expect("read backup metadata");
-    assert!(metadata.contains("\"managedBy\": \"Codex-X provider sync v2\""));
+    assert!(metadata.contains("\"managedBy\": \"Codex-X-Pro provider sync v2\""));
 
     let second = sync_sessions_provider_inner(
         Some(codex_dir.display().to_string()),
@@ -4428,7 +4428,7 @@ fn backup_pruning_only_removes_v2_provider_sync_backups() {
         write_json(
             &v2.join("metadata.json"),
             &json!({
-                "managedBy": "Codex-X provider sync v2",
+                "managedBy": "Codex-X-Pro provider sync v2",
                 "targetProvider": "custom"
             }),
         )

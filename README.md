@@ -115,6 +115,14 @@
 
 ---
 
+## 交流群 / Community
+
+- AI 技术交流群：欢迎交流 Codex、AI 工具和使用经验
+
+<p align="center">
+  <img src="assets/%E4%BA%A4%E6%B5%81%E7%BE%A4.jpg" alt="AI 技术交流群 QQ 群二维码" width="420" />
+</p>
+
 ## Codex-X-Pro 是什么？
 
 当你同时使用 Codex 桌面端、CLI、第三方 API、Skills / MCP 和多套提示词时，配置很容易散落在不同文件里。Codex-X-Pro 把这些高频操作集中到一个桌面界面中，让当前状态看得见、常用操作点一下就能完成。

@@ -1217,6 +1217,22 @@ pub(crate) fn initialize_on_startup() -> Result<()> {
     ))
 }
 
+pub(crate) fn recover() -> Result<GatewayProcessState> {
+    let meta = read_mode_meta()?.ok_or_else(|| {
+        CodexxError::Config("GATEWAY_RECOVERY_NOT_NEEDED: no persisted gateway mode".to_string())
+    })?;
+    if meta.desired_mode != "gateway" {
+        return Err(CodexxError::Config(
+            "GATEWAY_RECOVERY_NOT_NEEDED: gateway mode is not enabled".to_string(),
+        ));
+    }
+    if let Err(error) = initialize_on_startup() {
+        mark_degraded_state(&error.to_string());
+        return Err(error);
+    }
+    Ok(process_state(meta.listen_port))
+}
+
 pub(crate) fn process_state(port: u16) -> GatewayProcessState {
     let mut slot = child_slot()
         .lock()

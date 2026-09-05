@@ -81,6 +81,7 @@ export function GatewayObservePage({ lang, active = true }: Props) {
   const [packetLoading, setPacketLoading] = React.useState(false);
   const detailSearchRef = React.useRef<HTMLInputElement>(null);
   const detailPreRef = React.useRef<HTMLPreElement>(null);
+  const activeDetailMatchRef = React.useRef<HTMLElement | null>(null);
   const captureLimitRef = React.useRef(EMPTY_OBSERVE.capture_limit);
   const lastSeqRef = React.useRef(0);
 
@@ -276,6 +277,7 @@ export function GatewayObservePage({ lang, active = true }: Props) {
   const activePacketTotal = Number((detail as any)?.packet_sizes?.[detailProbe]?.total_bytes || 0);
   const activePacketOffset = packetOffsets[detailProbe] ?? Number(activeProbe?.retained_bytes || 0);
   const canLoadMore = Boolean(detailProbes && detailView === "raw-text" && activePacketTotal > activePacketOffset && !packetComplete[detailProbe]);
+  const showPreviewTruncation = Boolean(activeProbeTruncation && !packetComplete[detailProbe]);
   const selectedValue = detailProbes ? activeProbeValue : detail;
   const detailText = detailView === "conversation"
     ? conversationText(selectedValue) || gatewayText(lang, "此视图不可用：未识别到对话消息", "This view is unavailable: no conversation messages were detected")
@@ -294,6 +296,10 @@ export function GatewayObservePage({ lang, active = true }: Props) {
     }
     setDetailMatchIndex((current) => Math.min(current, detailMatches.length - 1));
   }, [detailMatches.length]);
+  React.useLayoutEffect(() => {
+    if (!detail || !detailQuery || !detailMatches.length) return;
+    activeDetailMatchRef.current?.scrollIntoView({ block: "center", inline: "nearest" });
+  }, [detail, detailMatches.length, detailMatchIndex, detailQuery, detailProbe, detailText, detailView]);
   React.useEffect(() => {
     const handleFindShortcut = (event: KeyboardEvent) => {
       if (!detail || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "f") return;
@@ -329,7 +335,15 @@ export function GatewayObservePage({ lang, active = true }: Props) {
     let cursor = 0;
     detailMatches.forEach((range, index) => {
       if (range.start > cursor) parts.push(detailText.slice(cursor, range.start));
-      parts.push(<mark key={`${range.start}-${range.end}`} className={index === detailMatchIndex ? "cx-gateway-find-match cx-gateway-find-match--active" : "cx-gateway-find-match"}>{detailText.slice(range.start, range.end)}</mark>);
+      parts.push(
+        <mark
+          key={`${range.start}-${range.end}`}
+          ref={index === detailMatchIndex ? activeDetailMatchRef : undefined}
+          className={index === detailMatchIndex ? "cx-gateway-find-match cx-gateway-find-match--active" : "cx-gateway-find-match"}
+        >
+          {detailText.slice(range.start, range.end)}
+        </mark>,
+      );
       cursor = range.end;
     });
     if (cursor < detailText.length) parts.push(detailText.slice(cursor));
@@ -516,9 +530,9 @@ export function GatewayObservePage({ lang, active = true }: Props) {
           </div>
         </div>
         {detail?.archive_status === "archive_limit_exceeded" && <div className="cx-gateway-truncation">archive_limit_exceeded: this request exceeded the configured per-record archive limit and was not stored.</div>}
-        {activeProbeTruncation && <div className="cx-gateway-truncation">{activeProbeTruncation}</div>}
-        {canLoadMore && <div className="cx-gateway-load-more"><Button variant="secondary" size="sm" onClick={() => void loadMorePacket()} disabled={packetLoading}>{packetLoading ? "Loading..." : `Load more (${formatBytes(activePacketTotal - activePacketOffset)} remaining)`}</Button></div>}
+        {showPreviewTruncation && <div className="cx-gateway-truncation">{activeProbeTruncation}</div>}
         <pre ref={detailPreRef} className="cx-gateway-detail-pre">{highlightedDetail}</pre>
+        {canLoadMore && <div className="cx-gateway-load-more"><Button variant="secondary" size="sm" onClick={() => void loadMorePacket()} disabled={packetLoading}>{packetLoading ? "Loading..." : `Load more (${formatBytes(activePacketTotal - activePacketOffset)} remaining)`}</Button></div>}
       </ModalShell>
     </section>
   );

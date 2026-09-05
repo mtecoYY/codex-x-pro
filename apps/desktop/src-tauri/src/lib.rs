@@ -1502,6 +1502,14 @@ async fn start_gateway(input: gateway::GatewayStartInput) -> Result<gateway::Gat
 }
 
 #[tauri::command]
+async fn recover_gateway() -> Result<gateway::GatewayProcessState> {
+    let result = tauri::async_runtime::spawn_blocking(gateway::recover)
+    .await
+    .map_err(|error| CodexxError::Config(format!("GATEWAY_RECOVERY_FAILED: {error}")))?;
+    result.map_err(|error| CodexxError::Config(format!("GATEWAY_RECOVERY_FAILED: {error}")))
+}
+
+#[tauri::command]
 async fn stop_gateway() -> Result<()> {
     tauri::async_runtime::spawn_blocking(gateway::stop)
         .await
@@ -1584,6 +1592,7 @@ pub fn run() {
             open_url,
             get_gateway_process_state,
             start_gateway,
+            recover_gateway,
             stop_gateway,
             gateway_request,
         ])

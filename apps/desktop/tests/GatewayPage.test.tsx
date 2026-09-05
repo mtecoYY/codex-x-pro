@@ -48,18 +48,64 @@ describe("GatewayPage", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Start gateway" })).toBeTruthy());
   });
 
-  it("shows degraded recovery state without allowing start or stop", async () => {
+  it("shows degraded recovery and direct-mode escape actions", async () => {
+    let recovered = false;
     invoke.mockImplementation(async (command: string) => {
       if (command === "get_gateway_process_state") return { ...stoppedState, managedByCodexX: true, degraded: true, error: "GATEWAY_DEGRADED: recovery failed" };
+      if (command === "recover_gateway") {
+        recovered = true;
+        return { ...stoppedState, running: true, managedByCodexX: true, codexRouteActive: true, degraded: false };
+      }
+      if (command === "stop_gateway") return undefined;
       throw new Error(`unexpected command: ${command}`);
     });
 
     render(<GatewayPage lang="en" />);
     expect(await screen.findByText("Gateway recovery required")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Check status" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Start gateway" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Stop gateway" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Recover gateway" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Stop and restore direct mode" })).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toContain("GATEWAY_DEGRADED");
+
+    fireEvent.click(screen.getByRole("button", { name: "Recover gateway" }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("recover_gateway", undefined));
+    expect(recovered).toBe(true);
+  });
+
+  it("keeps the direct-mode escape available when recovery fails", async () => {
+    invoke.mockImplementation(async (command: string) => {
+      if (command === "get_gateway_process_state") return { ...stoppedState, managedByCodexX: true, degraded: true, error: "GATEWAY_DEGRADED: recovery failed" };
+      if (command === "recover_gateway") throw new Error("GATEWAY_RECOVERY_FAILED: still unavailable");
+      if (command === "stop_gateway") return undefined;
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<GatewayPage lang="en" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Recover gateway" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("GATEWAY_RECOVERY_FAILED");
+    expect(screen.getByRole("button", { name: "Recover gateway" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Stop and restore direct mode" })).toBeTruthy();
+  });
+
+  it("uses stop gateway as the direct-mode escape from degraded state", async () => {
+    let stopped = false;
+    invoke.mockImplementation(async (command: string) => {
+      if (command === "get_gateway_process_state") {
+        return stopped
+          ? stoppedState
+          : { ...stoppedState, managedByCodexX: true, degraded: true, error: "GATEWAY_DEGRADED: recovery failed" };
+      }
+      if (command === "stop_gateway") {
+        stopped = true;
+        return undefined;
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<GatewayPage lang="en" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Stop and restore direct mode" }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("stop_gateway", undefined));
+    expect(await screen.findByRole("button", { name: "Start gateway" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Recover gateway" })).toBeNull();
   });
 
   it("sends the wrapped start payload from the real page interaction", async () => {

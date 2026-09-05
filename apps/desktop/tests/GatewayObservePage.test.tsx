@@ -250,6 +250,9 @@ describe("GatewayObservePage", () => {
     const row = { id: 1, channel: "synthetic", status_code: 200, model: "find-model", ok: true };
     const clipboard = { writeText: vi.fn(async () => undefined) };
     Object.assign(navigator, { clipboard });
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: scrollIntoView });
     invoke.mockImplementation(async (command: string, args?: { input?: { path?: string } }) => {
       if (command === "get_gateway_process_state") return managedState;
       const path = args?.input?.path;
@@ -263,8 +266,14 @@ describe("GatewayObservePage", () => {
     const find = await screen.findByRole("textbox", { name: "Find in details" });
     fireEvent.change(find, { target: { value: "hello" } });
     expect(screen.getByText("1/2")).toBeTruthy();
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
     fireEvent.click(screen.getByRole("button", { name: "Copy all content" }));
     await waitFor(() => expect(clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining("hello hello")));
+    if (originalScrollIntoView) {
+      Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: originalScrollIntoView });
+    } else {
+      delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
   });
 
   it("loads archived packet content in chunks on demand", async () => {
@@ -286,8 +295,14 @@ describe("GatewayObservePage", () => {
     });
     render(<GatewayObservePage lang="en" />);
     fireEvent.click(await screen.findByText("chunk-model"));
-    fireEvent.click(await screen.findByRole("button", { name: /Load more/ }));
+    const loadMore = await screen.findByRole("button", { name: /Load more/ });
+    const dialog = screen.getByRole("dialog");
+    const pre = dialog.querySelector("pre");
+    expect(pre).toBeTruthy();
+    expect(pre!.compareDocumentPosition(loadMore) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(loadMore);
     await waitFor(() => expect(screen.getByText("head tail")).toBeTruthy());
+    expect(screen.queryByText("OBSERVE_DETAIL_TRUNCATED: original_bytes=9, retained_bytes=4")).toBeNull();
     expect(invoke).toHaveBeenCalledWith("gateway_request", expect.objectContaining({
       input: expect.objectContaining({ path: expect.stringContaining("/observe/packet/1?probe=global_entry_probe&offset=4") }),
     }));

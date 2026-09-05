@@ -1,9 +1,9 @@
 import React from "react";
-import { Power, RefreshCw } from "lucide-react";
+import { Power, RefreshCw, ShieldAlert, Wrench } from "lucide-react";
 import type { Lang } from "../types";
 import { Button, StatusBadge } from "../components/ui";
 import { gatewayCommands } from "../gatewayCommands";
-import { gatewayCanStart, gatewayDisplayMode } from "../gatewayState";
+import { gatewayCanRecover, gatewayCanStart, gatewayCanStop, gatewayDisplayMode } from "../gatewayState";
 import { gatewayText, GATEWAY_PORT_KEY, useGatewayPageState } from "../gatewayPageState";
 import "../styles/gateway-page.css";
 
@@ -63,6 +63,7 @@ export function GatewayPage({ lang, configDir = "", active = true }: Props) {
   };
 
   const stop = () => void run("stop", () => gatewayCommands.stop()).catch(() => undefined);
+  const recover = () => void run("recover", () => gatewayCommands.recover()).catch(() => undefined);
   const refreshPage = () => void refresh().catch((nextError) => setError(String(nextError)));
   const displayMode = gatewayDisplayMode(processState);
   const externalGateway = displayMode === "external";
@@ -114,7 +115,7 @@ export function GatewayPage({ lang, configDir = "", active = true }: Props) {
               className="ui-field__control"
               value={portDraft}
               onChange={(event) => setPortDraft(event.target.value)}
-              disabled={managedGateway || Boolean(busy)}
+              disabled={managedGateway || degradedGateway || Boolean(busy)}
               inputMode="numeric"
             />
           </label>
@@ -124,13 +125,22 @@ export function GatewayPage({ lang, configDir = "", active = true }: Props) {
               className="ui-field__control"
               value={upstream}
               onChange={(event) => setUpstream(event.target.value)}
-              disabled={managedGateway || Boolean(busy)}
+              disabled={managedGateway || degradedGateway || Boolean(busy)}
             />
           </label>
-          {stateUnknown || degradedGateway ? (
+          {stateUnknown ? (
             <Button variant="secondary" icon={<RefreshCw size={16} />} onClick={refreshPage} disabled={Boolean(busy)}>
               Check status
             </Button>
+          ) : degradedGateway && gatewayCanRecover(processState) ? (
+            <>
+              <Button variant="primary" icon={<Wrench size={16} />} onClick={recover} disabled={Boolean(busy)}>
+                {busy === "recover" ? gatewayText(lang, "正在修复", "Recovering") : gatewayText(lang, "修复网关", "Recover gateway")}
+              </Button>
+              <Button variant="danger" icon={<ShieldAlert size={16} />} onClick={stop} disabled={Boolean(busy) || !gatewayCanStop(processState)}>
+                {busy === "stop" ? gatewayText(lang, "正在恢复直连", "Restoring direct mode") : gatewayText(lang, "停止并恢复直连", "Stop and restore direct mode")}
+              </Button>
+            </>
           ) : gatewayCanStart(processState) ? (
             <Button variant="primary" icon={<Power size={16} />} onClick={start} disabled={Boolean(busy)}>
               {busy === "start" ? gatewayText(lang, "正在启动", "Starting") : gatewayText(lang, "启动网关", "Start gateway")}
@@ -186,6 +196,11 @@ export function GatewayPage({ lang, configDir = "", active = true }: Props) {
       {routeDisconnected && (
         <div className="cx-gateway-disabled-note">
           {gatewayText(lang, "网关进程仍由 Codex-X-Pro 管理，但当前 Codex 配置已被外部修改。为避免覆盖该配置，实时观测、用户脚本和网关热更新暂不可用。", "The gateway process is still managed by Codex-X-Pro, but the current Codex configuration was changed externally. Live observation, user scripts, and gateway hot updates are disabled to avoid overwriting that configuration.")}
+        </div>
+      )}
+      {degradedGateway && (
+        <div className="cx-gateway-disabled-note">
+          {gatewayText(lang, "网关已进入降级保护。可以重试修复；如果不再使用网关，请停止网关并恢复直连配置。", "The gateway is in recovery mode. Retry recovery, or stop the gateway and restore direct configuration.")}
         </div>
       )}
       {(error || processError) && <div className="cx-gateway-error" role="alert">{error || processError}</div>}

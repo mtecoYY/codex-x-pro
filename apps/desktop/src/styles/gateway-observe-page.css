@@ -172,7 +172,7 @@
   display: flex;
   justify-content: center;
   padding: 10px 20px;
-  border-bottom: 1px solid var(--ui-border-subtle);
+  border-top: 1px solid var(--ui-border-subtle);
   background: var(--ui-surface-muted);
 }
 

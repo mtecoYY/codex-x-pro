@@ -100,8 +100,12 @@ export function GatewayScriptsPage({ lang, active = true }: Props) {
     link.download = lang === "zh" ? "用户脚本 raw-text 协议.md" : "user-script-raw-text-protocol.md";
     document.body.appendChild(link);
     link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    // Keep the anchor and object URL alive until the WebView has started the download.
+    // Removing it synchronously can cancel downloads in Tauri's WebView2 runtime.
+    window.setTimeout(() => {
+      link.remove();
+      URL.revokeObjectURL(url);
+    }, 1000);
   };
 
   return (

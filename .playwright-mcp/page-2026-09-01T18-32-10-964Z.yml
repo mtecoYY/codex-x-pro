@@ -1,0 +1,82 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - generic [aria-hidden] [ref=e6]: X
+      - generic [ref=e7]:
+        - heading "Codex-X" [level=1] [ref=e9]
+        - paragraph [ref=e10]: 切换 · 指令 · 配置
+    - navigation "主导航" [ref=e11]:
+      - button "概览" [ref=e12] [cursor=pointer]
+      - button "供应商" [ref=e20] [cursor=pointer]
+      - button "会话管理" [ref=e25] [cursor=pointer]
+      - button "技能和MCP" [ref=e32] [cursor=pointer]
+      - button "指令提示词" [ref=e38] [cursor=pointer]
+      - button "TOML" [ref=e44] [cursor=pointer]
+      - button "本地网关" [ref=e52] [cursor=pointer]
+      - button "实时请求观测" [ref=e61] [cursor=pointer]
+      - button "用户脚本处理器" [ref=e67] [cursor=pointer]
+      - button "设置" [ref=e75] [cursor=pointer]
+      - button "关于" [ref=e81] [cursor=pointer]
+    - generic [ref=e86]:
+      - generic "Codex CLI 未检测到" [ref=e87]:
+        - generic [ref=e91]:
+          - generic [ref=e92]: Codex CLI
+          - strong [ref=e93]: 未检测到
+      - switch "切换为深色模式" [ref=e94] [cursor=pointer]:
+        - generic [ref=e101]:
+          - generic [ref=e102]: 外观模式
+          - strong [ref=e103]: 浅色
+  - main [ref=e106]:
+    - generic [ref=e108]:
+      - alert:
+        - generic:
+          - strong: "TypeError: Cannot read properties of undefined (reading 'invoke')"
+      - region "概览" [ref=e110]:
+        - generic [ref=e111]:
+          - generic [ref=e112]:
+            - paragraph [ref=e113]: CODEX 配置管理器
+            - heading "读取失败" [level=2] [ref=e115]
+          - generic [ref=e116]:
+            - generic [ref=e117]: CODEX_HOME
+            - textbox "CODEX_HOME" [ref=e118]:
+              - /placeholder: 留空使用默认目录
+            - button "加载" [ref=e119] [cursor=pointer]
+        - generic [ref=e125]:
+          - article [ref=e126]:
+            - generic [ref=e131]:
+              - generic [ref=e132]: 配置文件
+              - strong [ref=e133]: 读取失败
+          - article [ref=e134]:
+            - generic [ref=e140]:
+              - generic [ref=e141]: 供应商
+              - strong [ref=e142]: 读取失败
+          - article [ref=e143]:
+            - generic [ref=e148]:
+              - generic [ref=e149]: 指令提示词
+              - strong [ref=e150]: 读取失败
+          - article [ref=e151]:
+            - generic [ref=e156]:
+              - generic [ref=e157]: 认证状态
+              - strong [ref=e158]: 读取失败
+        - generic [ref=e159]:
+          - generic [ref=e160]:
+            - generic [ref=e161]:
+              - paragraph [ref=e162]: 实时状态
+              - heading "当前 Codex 配置" [level=3] [ref=e163]
+            - generic [ref=e164]: 读取失败
+          - generic [ref=e167]:
+            - generic [ref=e168]:
+              - generic [ref=e169]: 目录
+              - code [ref=e170]: 读取失败
+            - generic [ref=e171]:
+              - generic [ref=e172]: 配置
+              - code [ref=e173]: 读取失败
+            - generic [ref=e174]:
+              - generic [ref=e175]: 模型
+              - code [ref=e176]: 读取失败
+            - generic [ref=e177]:
+              - generic [ref=e178]: 供应商标识
+              - code [ref=e179]: 读取失败
+            - generic [ref=e180]:
+              - generic [ref=e181]: 指令文件
+              - code [ref=e182]: 读取失败

@@ -54,6 +54,7 @@ test("gateway commands preserve null bodies and do not double-wrap start input",
     upstream: "http://127.0.0.1:19090",
     configDir: null,
   });
+  await commands.recover();
   await commands.stop();
 
   assert.deepEqual(calls, [
@@ -83,6 +84,7 @@ test("gateway commands preserve null bodies and do not double-wrap start input",
         },
       },
     },
+    { command: "recover_gateway", args: undefined },
     { command: "stop_gateway", args: undefined },
   ]);
 });
@@ -110,7 +112,7 @@ test("all frontend source files keep gateway IPC behind the typed adapter", asyn
     const source = await readFile(file, "utf8");
     assert.doesNotMatch(
       source,
-      /invoke(?:<[^>]+>)?\(\s*["'](?:get_gateway_process_state|start_gateway|stop_gateway|gateway_request)["']/,
+      /invoke(?:<[^>]+>)?\(\s*["'](?:get_gateway_process_state|start_gateway|recover_gateway|stop_gateway|gateway_request)["']/,
       `${file} contains a raw gateway command invoke`,
     );
   }

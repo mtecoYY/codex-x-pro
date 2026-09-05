@@ -1,0 +1,47 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - generic [aria-hidden] [ref=e6]: X
+      - generic [ref=e7]:
+        - heading "Codex-X" [level=1] [ref=e9]
+        - paragraph [ref=e10]: 切换 · 指令 · 配置
+    - navigation "主导航" [ref=e11]:
+      - button "概览" [ref=e12] [cursor=pointer]
+      - button "供应商" [ref=e20] [cursor=pointer]
+      - button "会话管理" [ref=e25] [cursor=pointer]
+      - button "技能和MCP" [ref=e32] [cursor=pointer]
+      - button "指令提示词" [ref=e38] [cursor=pointer]
+      - button "TOML" [ref=e44] [cursor=pointer]
+      - button "本地网关" [ref=e52] [cursor=pointer]
+      - button "实时请求观测" [ref=e61] [cursor=pointer]
+      - button "用户脚本处理器" [active] [ref=e67] [cursor=pointer]
+      - button "设置" [ref=e75] [cursor=pointer]
+      - button "关于" [ref=e81] [cursor=pointer]
+    - generic [ref=e86]:
+      - generic "Codex CLI 未检测到" [ref=e87]:
+        - generic [ref=e91]:
+          - generic [ref=e92]: Codex CLI
+          - strong [ref=e93]: 未检测到
+      - switch "切换为深色模式" [ref=e94] [cursor=pointer]:
+        - generic [ref=e101]:
+          - generic [ref=e102]: 外观模式
+          - strong [ref=e103]: 浅色
+  - main [ref=e106]:
+    - generic [ref=e273]:
+      - generic [ref=e274]:
+        - generic [ref=e275]:
+          - generic [ref=e276]: Gateway
+          - heading "用户脚本处理器" [level=2] [ref=e277]
+          - paragraph [ref=e278]: 发现、测试和管理本机用户脚本处理器。
+        - generic [ref=e279]: 直连模式
+      - generic [ref=e282]: 用户脚本仅在网关模式下生效。当前为直连模式时，脚本不会处理 Codex 的真实请求。
+      - alert [ref=e283]: "TypeError: Cannot read properties of undefined (reading 'invoke')"
+      - generic [ref=e284]:
+        - generic [ref=e285]:
+          - generic [ref=e286]:
+            - heading "脚本列表" [level=3] [ref=e287]
+            - paragraph [ref=e288]: 已发现 0 个脚本。用户脚本使用 raw-text 处理真实请求；测试只校验文本协议和结构。
+          - generic [ref=e289]:
+            - button "协议说明" [ref=e290] [cursor=pointer]
+            - button "刷新脚本" [disabled] [ref=e291]
+        - generic [ref=e297]: 用户脚本处理器需要先进入网关模式。

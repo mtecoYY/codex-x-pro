@@ -1,0 +1,70 @@
+- generic [ref=f1e3]:
+  - complementary [ref=f1e4]:
+    - generic [aria-hidden] [ref=f1e6]: X
+    - navigation "主导航" [ref=f1e7]:
+      - button "概览" [ref=f1e8] [cursor=pointer]
+      - button "本地网关" [ref=f1e15] [cursor=pointer]
+      - button "供应商" [ref=f1e23] [cursor=pointer]
+      - button "会话管理" [ref=f1e27] [cursor=pointer]
+      - button "技能和MCP" [ref=f1e33] [cursor=pointer]
+      - button "指令提示词" [ref=f1e38] [cursor=pointer]
+      - button "TOML" [ref=f1e43] [cursor=pointer]
+      - button "设置" [ref=f1e50] [cursor=pointer]
+      - button "关于" [ref=f1e55] [cursor=pointer]
+    - generic [ref=f1e59]:
+      - generic "Codex CLI 未检测到" [ref=f1e60]
+      - switch "切换为深色模式" [ref=f1e64] [cursor=pointer]
+  - main [ref=f1e71]:
+    - generic [ref=f1e73]:
+      - alert:
+        - generic:
+          - strong: "TypeError: Cannot read properties of undefined (reading 'invoke')"
+      - region "概览" [ref=f1e75]:
+        - generic [ref=f1e76]:
+          - generic [ref=f1e77]:
+            - paragraph [ref=f1e78]: CODEX 配置管理器
+            - heading "读取失败" [level=2] [ref=f1e80]
+          - generic [ref=f1e81]:
+            - generic [ref=f1e82]: CODEX_HOME
+            - textbox "CODEX_HOME" [ref=f1e83]:
+              - /placeholder: 留空使用默认目录
+            - button "加载" [ref=f1e84] [cursor=pointer]
+        - generic [ref=f1e90]:
+          - article [ref=f1e91]:
+            - generic [ref=f1e96]:
+              - generic [ref=f1e97]: 配置文件
+              - strong [ref=f1e98]: 读取失败
+          - article [ref=f1e99]:
+            - generic [ref=f1e105]:
+              - generic [ref=f1e106]: 供应商
+              - strong [ref=f1e107]: 读取失败
+          - article [ref=f1e108]:
+            - generic [ref=f1e113]:
+              - generic [ref=f1e114]: 指令提示词
+              - strong [ref=f1e115]: 读取失败
+          - article [ref=f1e116]:
+            - generic [ref=f1e121]:
+              - generic [ref=f1e122]: 认证状态
+              - strong [ref=f1e123]: 读取失败
+        - generic [ref=f1e124]:
+          - generic [ref=f1e125]:
+            - generic [ref=f1e126]:
+              - paragraph [ref=f1e127]: 实时状态
+              - heading "当前 Codex 配置" [level=3] [ref=f1e128]
+            - generic [ref=f1e129]: 读取失败
+          - generic [ref=f1e132]:
+            - generic [ref=f1e133]:
+              - generic [ref=f1e134]: 目录
+              - code [ref=f1e135]: 读取失败
+            - generic [ref=f1e136]:
+              - generic [ref=f1e137]: 配置
+              - code [ref=f1e138]: 读取失败
+            - generic [ref=f1e139]:
+              - generic [ref=f1e140]: 模型
+              - code [ref=f1e141]: 读取失败
+            - generic [ref=f1e142]:
+              - generic [ref=f1e143]: 供应商标识
+              - code [ref=f1e144]: 读取失败
+            - generic [ref=f1e145]:
+              - generic [ref=f1e146]: 指令文件
+              - code [ref=f1e147]: 读取失败

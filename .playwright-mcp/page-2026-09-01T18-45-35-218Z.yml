@@ -1,0 +1,77 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - generic [aria-hidden] [ref=e6]: X
+      - generic [ref=e7]:
+        - heading "Codex-X" [level=1] [ref=e9]
+        - paragraph [ref=e10]: 切换 · 指令 · 配置
+    - navigation "主导航" [ref=e11]:
+      - button "概览" [ref=e12] [cursor=pointer]
+      - button "供应商" [ref=e20] [cursor=pointer]
+      - button "会话管理" [ref=e25] [cursor=pointer]
+      - button "技能和MCP" [ref=e32] [cursor=pointer]
+      - button "指令提示词" [ref=e38] [cursor=pointer]
+      - button "TOML" [ref=e44] [cursor=pointer]
+      - button "本地网关" [ref=e52] [cursor=pointer]
+      - button "实时请求观测" [active] [ref=e61] [cursor=pointer]
+      - button "用户脚本处理器" [ref=e67] [cursor=pointer]
+      - button "设置" [ref=e75] [cursor=pointer]
+      - button "关于" [ref=e81] [cursor=pointer]
+    - generic [ref=e86]:
+      - generic "Codex CLI 未检测到" [ref=e87]:
+        - generic [ref=e91]:
+          - generic [ref=e92]: Codex CLI
+          - strong [ref=e93]: 未检测到
+      - switch "切换为深色模式" [ref=e94] [cursor=pointer]:
+        - generic [ref=e101]:
+          - generic [ref=e102]: 外观模式
+          - strong [ref=e103]: 浅色
+  - main [ref=e106]:
+    - generic [ref=e213]:
+      - generic [ref=e214]:
+        - generic [ref=e215]:
+          - generic [ref=e216]: Gateway
+          - heading "实时请求观测" [level=2] [ref=e217]
+          - paragraph [ref=e218]: 查看网关运行期间的受限请求观测记录。
+        - generic [ref=e219]: 需要网关模式
+      - generic [ref=e222]: 请先进入网关模式，实时请求观测才会启用。
+      - alert [ref=e223]: "TypeError: Cannot read properties of undefined (reading 'invoke')"
+      - generic [ref=e224]:
+        - generic [ref=e225]:
+          - generic [ref=e226]:
+            - heading "观测记录" [level=3] [ref=e227]
+            - generic [ref=e228]: 0 / 100 · 淘汰 0 · 丢弃 0
+          - generic [ref=e229]:
+            - button "启动采集" [disabled] [ref=e230]
+            - button "清除" [disabled] [ref=e234]
+            - generic [ref=e238]:
+              - generic [ref=e239]: 筛选
+              - combobox "筛选" [disabled] [ref=e240]:
+                - option "全部" [selected]
+                - option "成功"
+                - option "错误"
+            - generic [ref=e241]:
+              - generic [ref=e242]: 保留上限
+              - generic [ref=e243]:
+                - textbox "保留上限 保存保留上限" [disabled] [ref=e244]: "100"
+                - button "保存保留上限" [disabled] [ref=e245]
+        - table [ref=e251]:
+          - rowgroup [ref=e252]:
+            - row [ref=e253]:
+              - columnheader [ref=e254]:
+                - button "ID" [disabled] [ref=e255]
+              - columnheader [ref=e258]:
+                - button "渠道" [disabled] [ref=e259]
+              - columnheader [ref=e260]:
+                - button "状态码" [disabled] [ref=e261]
+              - columnheader [ref=e262]:
+                - button "模型" [disabled] [ref=e263]
+              - columnheader [ref=e264]:
+                - button "耗时(ms)" [disabled] [ref=e265]
+              - columnheader [ref=e266]:
+                - button "首字(ms)" [disabled] [ref=e267]
+              - columnheader [ref=e268]:
+                - button "Tokens" [disabled] [ref=e269]
+          - rowgroup [ref=e270]:
+            - row [ref=e271] [cursor=pointer]:
+              - cell "请先进入网关模式" [ref=e272]

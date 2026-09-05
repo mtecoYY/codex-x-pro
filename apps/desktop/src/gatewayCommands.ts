@@ -32,6 +32,10 @@ export function createGatewayCommands(invoke: GatewayCommandInvoker) {
       return invoke<GatewayProcessState>("start_gateway", { input });
     },
 
+    recover() {
+      return invoke<GatewayProcessState>("recover_gateway");
+    },
+
     stop() {
       return invoke<void>("stop_gateway");
     },

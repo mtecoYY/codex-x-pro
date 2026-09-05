@@ -15,6 +15,15 @@ export function gatewayCanStart(state: GatewayProcessState | null): boolean {
   return mode === "stopped" || mode === "external";
 }
 
+export function gatewayCanRecover(state: GatewayProcessState | null): boolean {
+  return gatewayDisplayMode(state) === "degraded";
+}
+
+export function gatewayCanStop(state: GatewayProcessState | null): boolean {
+  const mode = gatewayDisplayMode(state);
+  return mode === "managed" || mode === "disconnected" || mode === "degraded";
+}
+
 export function gatewayControlsDisabled(state: GatewayProcessState | null, busy: boolean): boolean {
   return gatewayDisplayMode(state) !== "managed" || busy;
 }

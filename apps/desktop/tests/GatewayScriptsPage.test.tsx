@@ -208,4 +208,32 @@ describe("GatewayScriptsPage", () => {
     expect(screen.getByText(/Template example/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Download protocol" })).toBeTruthy();
   });
+
+  it("starts the protocol download before cleaning up the temporary anchor", async () => {
+    vi.useFakeTimers();
+    const createObjectURL = vi.fn(() => "blob:protocol");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", { createObjectURL, revokeObjectURL });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+
+    try {
+      render(<GatewayScriptsPage lang="en" />);
+      fireEvent.click(screen.getByRole("button", { name: "Download protocol" }));
+
+      expect(createObjectURL).toHaveBeenCalledTimes(1);
+      expect(click).toHaveBeenCalledTimes(1);
+      const anchor = click.mock.instances[0] as HTMLAnchorElement;
+      expect(anchor.download).toBe("user-script-raw-text-protocol.md");
+      expect(anchor.href).toContain("blob:protocol");
+      expect(document.body.contains(anchor)).toBe(true);
+
+      vi.advanceTimersByTime(1000);
+      expect(document.body.contains(anchor)).toBe(false);
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:protocol");
+    } finally {
+      click.mockRestore();
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
 });

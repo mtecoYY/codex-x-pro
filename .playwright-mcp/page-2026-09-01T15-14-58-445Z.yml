@@ -1,0 +1,85 @@
+- generic [ref=f1e3]:
+  - complementary [ref=f1e4]:
+    - generic [aria-hidden] [ref=f1e6]: X
+    - navigation "主导航" [ref=f1e7]:
+      - button "概览" [ref=f1e8] [cursor=pointer]
+      - button "本地网关" [active] [ref=f1e15] [cursor=pointer]
+      - button "供应商" [ref=f1e23] [cursor=pointer]
+      - button "会话管理" [ref=f1e27] [cursor=pointer]
+      - button "技能和MCP" [ref=f1e33] [cursor=pointer]
+      - button "指令提示词" [ref=f1e38] [cursor=pointer]
+      - button "TOML" [ref=f1e43] [cursor=pointer]
+      - button "设置" [ref=f1e50] [cursor=pointer]
+      - button "关于" [ref=f1e55] [cursor=pointer]
+    - generic [ref=f1e59]:
+      - generic "Codex CLI 未检测到" [ref=f1e60]
+      - switch "切换为深色模式" [ref=f1e64] [cursor=pointer]
+  - main [ref=f1e71]:
+    - generic [ref=f1e74]:
+      - status [ref=f1e148]:
+        - generic [ref=f1e149]: Codex 配置读取失败，请返回概览重试
+      - generic [ref=f1e150]:
+        - generic [ref=f1e151]:
+          - generic [ref=f1e152]:
+            - generic [ref=f1e153]: Gateway
+            - heading "本地网关" [level=2] [ref=f1e154]
+            - paragraph [ref=f1e155]: 控制本机转发、实时观测和有界请求保留。
+          - generic [ref=f1e156]: 未启动
+        - generic [ref=f1e158]:
+          - generic [ref=f1e159]:
+            - text: 监听端口
+            - textbox "监听端口" [ref=f1e160]: "8787"
+          - generic [ref=f1e161]:
+            - text: 上游地址
+            - textbox "上游地址" [ref=f1e162]: https://newapi.gogogogoapp.mom
+          - button "启动网关" [ref=f1e163] [cursor=pointer]
+          - button "刷新" [ref=f1e166] [cursor=pointer]
+        - generic [ref=f1e172]: "网关守护: 未启用 · 实际状态: 未运行 · 登录自启动: 未启用"
+        - generic [ref=f1e173]: 网关配置改动将在重启 Codex 后生效。
+        - generic [ref=f1e174]: 实时观测页面已停用，请先进入网关模式。
+        - alert [ref=f1e175]: "TypeError: Cannot read properties of undefined (reading 'invoke')"
+        - generic [ref=f1e176]:
+          - generic [ref=f1e177]:
+            - heading "实时请求观测" [level=3] [ref=f1e178]
+            - generic [ref=f1e179]: 0 / 100 · 淘汰 0 · 丢弃 0
+          - generic [ref=f1e180]:
+            - button "启动采集" [disabled] [ref=f1e181]
+            - button "清除" [disabled] [ref=f1e185]
+            - generic [ref=f1e189]:
+              - text: 筛选
+              - combobox "筛选" [disabled] [ref=f1e190]:
+                - option "全部" [selected]
+                - option "成功"
+                - option "错误"
+            - generic [ref=f1e191]:
+              - text: 保留上限
+              - textbox "保留上限 保存保留上限" [disabled] [ref=f1e192]: "100"
+              - button "保存保留上限" [disabled] [ref=f1e193]
+        - table [ref=f1e199]:
+          - rowgroup [ref=f1e200]:
+            - row [ref=f1e201]:
+              - columnheader [ref=f1e202]:
+                - button "ID" [disabled] [ref=f1e203] [cursor=pointer]
+              - columnheader [ref=f1e206]:
+                - button "渠道" [disabled] [ref=f1e207] [cursor=pointer]
+              - columnheader [ref=f1e208]:
+                - button "状态码" [disabled] [ref=f1e209] [cursor=pointer]
+              - columnheader [ref=f1e210]:
+                - button "模型" [disabled] [ref=f1e211] [cursor=pointer]
+              - columnheader [ref=f1e212]:
+                - button "耗时(ms)" [disabled] [ref=f1e213] [cursor=pointer]
+              - columnheader [ref=f1e214]:
+                - button "首字(ms)" [disabled] [ref=f1e215] [cursor=pointer]
+              - columnheader [ref=f1e216]:
+                - button "Tokens" [disabled] [ref=f1e217] [cursor=pointer]
+          - rowgroup [ref=f1e218]:
+            - row [ref=f1e219] [cursor=pointer]:
+              - cell "请先进入网关模式" [ref=f1e220]
+        - generic [ref=f1e221]:
+          - generic [ref=f1e222]:
+            - heading "用户脚本处理器" [level=3] [ref=f1e223]
+            - paragraph [ref=f1e224]: 用户脚本使用 raw-text 处理真实请求；测试只校验文本协议和结构。
+          - generic [ref=f1e225]:
+            - button "协议说明" [ref=f1e226] [cursor=pointer]
+            - button "刷新脚本" [disabled] [ref=f1e227]
+        - generic [ref=f1e233]: 未发现脚本。将 manifest.json 和入口文件放入 ~/.codex-x/gateway-tools/<script-id>/。

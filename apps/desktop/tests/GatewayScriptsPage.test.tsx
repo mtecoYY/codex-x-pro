@@ -197,4 +197,15 @@ describe("GatewayScriptsPage", () => {
       },
     }));
   });
+
+  it("renders a detailed raw-text protocol document", async () => {
+    render(<GatewayScriptsPage lang="en" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Protocol documentation" }));
+    expect(screen.getByText(/What the script receives/)).toBeTruthy();
+    expect(screen.getByText(/stdin receives the complete HTTP request as raw text/i)).toBeTruthy();
+    expect(screen.getByText(/exit 10.*stdout must be a complete HTTP response raw text/i)).toBeTruthy();
+    expect(screen.getByText(/manifest\.json example/)).toBeTruthy();
+    expect(screen.getByText(/Template example/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Download protocol" })).toBeTruthy();
+  });
 });

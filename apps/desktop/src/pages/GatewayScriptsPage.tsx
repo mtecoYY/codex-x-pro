@@ -1,5 +1,5 @@
 import React from "react";
-import { RefreshCw } from "lucide-react";
+import { Download, RefreshCw } from "lucide-react";
 import type { Lang } from "../types";
 import { Button, ModalShell, StatusBadge } from "../components/ui";
 import { gatewayControlsDisabled, gatewayDisplayMode } from "../gatewayState";
@@ -10,6 +10,7 @@ import {
   type GatewayScriptListResponse,
   type GatewayScriptSummary,
 } from "../gatewayPageTypes";
+import { buildGatewayScriptProtocolDocument } from "../gatewayScriptProtocol";
 import "../styles/gateway-scripts-page.css";
 
 type Props = { lang: Lang; active?: boolean };
@@ -89,6 +90,19 @@ export function GatewayScriptsPage({ lang, active = true }: Props) {
   const routeDisconnected = displayMode === "disconnected";
   const scriptApiDisabled = !processState?.running || Boolean(busy);
   const chainControlDisabled = gatewayControlsDisabled(processState, Boolean(busy));
+  const protocolText = React.useMemo(() => buildGatewayScriptProtocolDocument(lang), [lang]);
+
+  const downloadProtocol = () => {
+    const blob = new Blob([protocolText], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = lang === "zh" ? "用户脚本 raw-text 协议.md" : "user-script-raw-text-protocol.md";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
 
   return (
     <section className={`cx-utility cx-page cx-page--stacked cx-gateway-scripts-page${active ? "" : " page-pane-hidden"}`}>
@@ -123,6 +137,9 @@ export function GatewayScriptsPage({ lang, active = true }: Props) {
           <div className="cx-gateway-script-toolbar">
             <Button variant="secondary" size="sm" onClick={() => setProtocolOpen(true)}>
               {gatewayText(lang, "协议说明", "Protocol documentation")}
+            </Button>
+            <Button variant="secondary" size="sm" icon={<Download size={16} />} onClick={downloadProtocol}>
+              {gatewayText(lang, "下载协议", "Download protocol")}
             </Button>
             <Button variant="secondary" size="sm" icon={<RefreshCw size={16} />} onClick={refreshScripts} disabled={scriptApiDisabled}>
               {gatewayText(lang, "刷新脚本", "Refresh scripts")}
@@ -204,7 +221,7 @@ export function GatewayScriptsPage({ lang, active = true }: Props) {
         size="md"
         bodyClassName="cx-gateway-code-body"
       >
-        <pre className="cx-gateway-code-pre">{gatewayText(lang, "stdin：完整 HTTP 请求 raw-text\n退出码 0：stdout 转发请求\n退出码 10：stdout 直接响应\n退出码 11：丢弃\n其他非零退出码：执行错误", "stdin: complete HTTP request raw-text\nexit 0: forward stdout request\nexit 10: direct stdout response\nexit 11: drop\nother nonzero exit: execution error")}</pre>
+        <pre className="cx-gateway-code-pre">{protocolText}</pre>
       </ModalShell>
 
       <ModalShell

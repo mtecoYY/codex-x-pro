@@ -31,7 +31,7 @@
             - textbox "监听端口" [ref=f1e160]: "8787"
           - generic [ref=f1e161]:
             - text: 上游地址
-            - textbox "上游地址" [ref=f1e162]: https://newapi.gogogogoapp.mom
+            - textbox "上游地址" [ref=f1e162]: http://127.0.0.1:19090
           - button "启动网关" [ref=f1e163] [cursor=pointer]
           - button "刷新" [ref=f1e166] [cursor=pointer]
         - generic [ref=f1e172]: "网关守护: 未启用 · 实际状态: 未运行 · 登录自启动: 未启用"

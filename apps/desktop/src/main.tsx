@@ -117,9 +117,9 @@ const bundledInstructionTemplates: InstructionTemplate[] = [
 ];
 
 const defaultProviderForm: SavedProvider = {
-  id: "magicai",
-  providerName: "MagicAI",
-  baseUrl: "https://sky1818.com",
+  id: "",
+  providerName: "",
+  baseUrl: "",
   model: "gpt-5.5",
   apiKey: "",
   tomlConfig: "",
@@ -357,9 +357,14 @@ function getProviderPageCopy(lang: Lang): ProviderCopy {
     eyebrow: "Provider",
     title: t.provider.title,
     subtitle: t.provider.subtitle,
+    gatewaySubtitle: isChinese
+      ? "\u7f51\u5173\u6a21\u5f0f\u4e0b\uff0c\u8fd9\u91cc\u663e\u793a\u7f51\u5173\u7684\u5b9e\u9645\u4e0a\u6e38\uff0c\u800c\u4e0d\u662f\u672c\u5730\u76d1\u542c\u5730\u5740\u3002\u5207\u6362\u53ea\u4f1a\u66f4\u65b0\u7f51\u5173\u4e0a\u6e38\u3002"
+      : "Gateway mode shows the real upstream provider, not the local listen address. Switching changes the gateway upstream only.",
     importLabel: t.provider.importCc,
     addLabel: t.provider.add,
     noProviders: t.provider.noProviders,
+    gatewayCurrentLabel: isChinese ? "\u5f53\u524d\u7f51\u5173\u4e0a\u6e38" : "Current gateway upstream",
+    gatewayEnableLabel: isChinese ? "\u5207\u6362\u7f51\u5173\u4e0a\u6e38" : "Switch gateway upstream",
     currentLabel: isChinese ? "当前使用" : "Current",
     enableLabel: isChinese ? "启用" : "Enable",
     testLabel: isChinese ? "测试连接" : "Test connection",
@@ -774,6 +779,7 @@ function App() {
   const [sessionDeleteSafetyConfirmed, setSessionDeleteSafetyConfirmed] = React.useState(false);
   const [state, setState] = React.useState<CodexState | null>(null);
   const [gatewayProcess, setGatewayProcess] = React.useState<GatewayProcessState | null>(null);
+  const gatewayProcessRef = React.useRef<GatewayProcessState | null>(null);
   const [gatewayPort, setGatewayPort] = React.useState(() => Number(localStorage.getItem("codexx.gateway.port") || 8787));
   const [configDir, setConfigDir] = React.useState("");
   const [configDirDraft, setConfigDirDraft] = React.useState("");
@@ -1076,6 +1082,22 @@ function App() {
     });
   }, [tab]);
 
+  const gatewayModeActive = Boolean(gatewayProcess?.managedByCodexX || gatewayProcess?.degraded);
+  const gatewayRuntimeProvider = React.useMemo(() => {
+    if (!gatewayModeActive) return null;
+    const raw = gatewayProcess?.state?.provider;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const provider = raw as Record<string, unknown>;
+    const baseUrl = typeof provider.base_url === "string" ? provider.base_url.trim() : "";
+    if (!baseUrl) return null;
+    return {
+      providerId: typeof provider.provider_id === "string" ? provider.provider_id.trim() : "",
+      providerName: typeof provider.provider_name === "string" ? provider.provider_name.trim() : "",
+      baseUrl,
+      model: typeof provider.model === "string" ? provider.model.trim() : "",
+      wireApi: typeof provider.wire_api === "string" ? provider.wire_api.trim() : "responses",
+    };
+  }, [gatewayModeActive, gatewayProcess?.state]);
   const currentProvider = state?.providers.find((p) => p.isCurrent);
   const liveProviderId = (state?.modelProvider || "openai").trim();
   const liveProviderApiKey = React.useMemo(() => {
@@ -1099,7 +1121,21 @@ function App() {
       model: state?.model,
     }) ? fallback.id : "";
   }, [activeProviderId, currentProvider, liveProviderApiKey, liveProviderId, savedProviders, state?.activeSavedProviderId, state?.isOfficialProvider, state?.model]);
-  const effectiveActiveProviderId = state?.isOfficialProvider ? "" : inferredActiveProviderId;
+  const gatewayActiveSavedProviderId = React.useMemo(() => {
+    if (!gatewayRuntimeProvider) return "";
+    const matches = savedProviders.filter((item) => savedProviderMatchesProfile(item, {
+      baseUrl: gatewayRuntimeProvider.baseUrl,
+      providerName: gatewayRuntimeProvider.providerName,
+      model: gatewayRuntimeProvider.model,
+    }));
+    const exactId = matches.find((item) => item.id === gatewayRuntimeProvider.providerId);
+    if (exactId) return exactId.id;
+    if (matches.length === 1) return matches[0].id;
+    return savedProviders.find((item) => item.id === gatewayRuntimeProvider.providerId)?.id || "";
+  }, [gatewayRuntimeProvider, savedProviders]);
+  const effectiveActiveProviderId = gatewayModeActive
+    ? gatewayActiveSavedProviderId
+    : state?.isOfficialProvider ? "" : inferredActiveProviderId;
   const currentInstructionPath = (state?.instructionFile || "").replace(/\\/g, "/");
   const currentInstructionFilename = currentInstructionPath.split("/").pop() || "";
   const activeInstructionTitle = React.useMemo(() => {
@@ -1118,6 +1154,21 @@ function App() {
       || (lang === "zh" ? "当前提示词" : "Current prompt");
   }, [currentInstructionFilename, instructionTemplates, lang, savedPrompts, state?.instructionTemplateKey]);
   const detectedRows = React.useMemo(() => {
+    if (!gatewayProcess) return [];
+    if (gatewayModeActive) {
+      if (!gatewayRuntimeProvider || gatewayActiveSavedProviderId) return [];
+      return [{
+        id: `gateway-${gatewayRuntimeProvider.providerId || "upstream"}`,
+        source: "detected" as const,
+        providerName: gatewayRuntimeProvider.providerName || gatewayRuntimeProvider.providerId || "Gateway upstream",
+        baseUrl: gatewayRuntimeProvider.baseUrl,
+        model: gatewayRuntimeProvider.model || state?.model || "gpt-5.5",
+        apiKey: "",
+        wireApi: gatewayRuntimeProvider.wireApi || "responses",
+        requiresOpenaiAuth: false,
+        isCurrent: true,
+      }];
+    }
     if (state?.isOfficialProvider) return [];
     return (state?.providers || []).filter((p) => p.isCurrent).map((p) => {
       const configKey = extractTomlProviderApiKey(state?.configText, p.id);
@@ -1134,7 +1185,7 @@ function App() {
         isCurrent: p.isCurrent,
       };
     });
-  }, [liveProviderApiKey, state?.configText, state?.isOfficialProvider, state?.model, state?.providers]);
+  }, [gatewayActiveSavedProviderId, gatewayModeActive, gatewayProcess, gatewayRuntimeProvider, liveProviderApiKey, state?.configText, state?.isOfficialProvider, state?.model, state?.providers]);
 
   const localRows = React.useMemo(() => {
     return savedProviders.map((p) => ({
@@ -1154,10 +1205,12 @@ function App() {
       apiKey: "",
       wireApi: "official",
       requiresOpenaiAuth: false,
-      isCurrent: Boolean(state?.isOfficialProvider),
+      isCurrent: gatewayModeActive
+        ? gatewayRuntimeProvider?.providerId === "openai-official"
+        : Boolean(state?.isOfficialProvider),
     };
     return orderProviderRows(officialRow, detectedRows, localRows);
-  }, [detectedRows, localRows, state?.isOfficialProvider, state?.model]);
+  }, [detectedRows, gatewayModeActive, gatewayRuntimeProvider?.providerId, localRows, state?.isOfficialProvider, state?.model]);
 
   const findLocalProviderForRow = React.useCallback((row: ProviderRow) => {
     if (row.source === "official") return undefined;
@@ -1178,11 +1231,11 @@ function App() {
       baseUrl: row.baseUrl,
       model: row.model,
       apiKey: row.apiKey || "",
-      tomlConfig: state?.configText || "",
+      tomlConfig: gatewayModeActive ? "" : state?.configText || "",
       wireApi: row.wireApi,
       requiresOpenaiAuth: row.requiresOpenaiAuth,
     };
-  }, [findLocalProviderForRow, state?.configText]);
+  }, [findLocalProviderForRow, gatewayModeActive, state?.configText]);
 
   const providerPageRows = React.useMemo<ProviderRow[]>(() => providerRows.map((row) => {
     const local = findLocalProviderForRow(row);
@@ -1198,12 +1251,15 @@ function App() {
       isCurrent: row.isCurrent,
       sourceLabel: row.source === "official" ? (lang === "zh" ? "Codex 登录" : "Codex login") : undefined,
       editable: row.source === "official" || Boolean(local) || row.source === "detected",
+      meta: gatewayModeActive && row.isCurrent
+        ? (lang === "zh" ? "\u8bf7\u6c42\u4f1a\u5148\u53d1\u9001\u5230\u672c\u5730\u7f51\u5173\uff0c\u518d\u8f6c\u53d1\u5230\u6b64\u4e0a\u6e38\u3002" : "Requests go through the local gateway and are then forwarded to this upstream.")
+        : undefined,
       duplicable: Boolean(providerCopySourceForRow(row)),
       deletable: Boolean(local),
       testable: row.source !== "official",
       testingKey: `${row.source}-${row.id}`,
     };
-  }), [findLocalProviderForRow, lang, providerCopySourceForRow, providerRows]);
+  }), [findLocalProviderForRow, gatewayModeActive, lang, providerCopySourceForRow, providerRows]);
 
   const visibleSessions = React.useMemo(
     () => (sessionStatus?.sessions || []).filter((item) => showInternalSessions || !item.isSubagent),
@@ -1363,8 +1419,8 @@ function App() {
       if (cancelled || inFlight) return;
       inFlight = true;
       void gatewayCommands.getProcessState(gatewayPort)
-        .then((next) => { if (!cancelled) setGatewayProcess(next); })
-        .catch(() => { if (!cancelled) setGatewayProcess(null); })
+        .then((next) => { if (!cancelled) { gatewayProcessRef.current = next; setGatewayProcess(next); } })
+        .catch(() => { if (!cancelled) { gatewayProcessRef.current = null; setGatewayProcess(null); } })
         .finally(() => { inFlight = false; });
     };
     const onGatewayStateChanged = () => poll();
@@ -1402,7 +1458,7 @@ function App() {
 
   React.useEffect(() => {
     if (!state) return;
-    if (state.isOfficialProvider) {
+    if (!gatewayModeActive && state.isOfficialProvider) {
       if (activeProviderId) {
         localStorage.removeItem(ACTIVE_PROVIDER_KEY);
         setActiveProviderId("");
@@ -1410,8 +1466,8 @@ function App() {
       return;
     }
     if (!savedProviders.length) return;
-    const mappedProviderId = savedProviders.some((item) => item.id === inferredActiveProviderId)
-      ? inferredActiveProviderId
+    const mappedProviderId = savedProviders.some((item) => item.id === effectiveActiveProviderId)
+      ? effectiveActiveProviderId
       : "";
     if (mappedProviderId && mappedProviderId !== activeProviderId) {
       localStorage.setItem(ACTIVE_PROVIDER_KEY, mappedProviderId);
@@ -1422,7 +1478,7 @@ function App() {
       localStorage.removeItem(ACTIVE_PROVIDER_KEY);
       setActiveProviderId("");
     }
-  }, [activeProviderId, inferredActiveProviderId, liveProviderId, savedProviders, state]);
+  }, [activeProviderId, effectiveActiveProviderId, gatewayModeActive, liveProviderId, savedProviders, state]);
 
   const handleActionResult = (result: ActionResult) => {
     setState(result.state);
@@ -1448,8 +1504,14 @@ function App() {
       path,
       body: body ?? null,
     }), [gatewayPort]);
+  const readGatewayProcessState = React.useCallback(async () => {
+    const current = await gatewayCommands.getProcessState(gatewayPort);
+    gatewayProcessRef.current = current;
+    setGatewayProcess(current);
+    return current;
+  }, [gatewayPort]);
   const gatewayVersion = (section: "provider" | "instruction") => {
-    const value = (gatewayProcess?.state as Record<string, unknown> | null | undefined)?.[section];
+    const value = (gatewayProcessRef.current?.state as Record<string, unknown> | null | undefined)?.[section];
     const version = (value as Record<string, unknown> | undefined)?.version;
     return typeof version === "number" ? version : undefined;
   };
@@ -1459,8 +1521,8 @@ function App() {
     }
     return gatewayProcess;
   };
-  const directWriteRoute = () => {
-    const current = ensureGatewayStateKnown();
+  const directWriteRoute = async () => {
+    const current = await readGatewayProcessState();
     if (current.degraded) {
       throw new Error("GATEWAY_DEGRADED: gateway recovery is required before changing live configuration");
     }
@@ -1470,7 +1532,7 @@ function App() {
   const switchInstructionTemplate = (templateId: string) =>
     call(
       async () => {
-        if (directWriteRoute()) return invoke<ActionResult>("enable_instruction_template", { configDir: configDir || null, templateId, injectionMode: promptInjectionMode });
+        if (await directWriteRoute()) return invoke<ActionResult>("enable_instruction_template", { configDir: configDir || null, templateId, injectionMode: promptInjectionMode });
         const detail = await invoke<BuiltinPromptDetail>("get_builtin_prompt_detail", { templateId });
         await gatewayControl("PUT", "/state/instruction", { enabled: true, template_id: `builtin:${templateId}`, content: detail.content, injection_mode: promptInjectionMode, expected_version: gatewayVersion("instruction") });
         return null;
@@ -1484,7 +1546,7 @@ function App() {
   const disableInstruction = () =>
     call(
       async () => {
-        if (directWriteRoute()) return invoke<ActionResult>("disable_instruction", { configDir: configDir || null, deleteFile: true });
+        if (await directWriteRoute()) return invoke<ActionResult>("disable_instruction", { configDir: configDir || null, deleteFile: true });
         await gatewayControl("PUT", "/state/instruction", { enabled: false, content: "", injection_mode: promptInjectionMode, expected_version: gatewayVersion("instruction") });
         return null;
       },
@@ -1496,8 +1558,8 @@ function App() {
 
   const disableExternalInstruction = () =>
     call(
-      () => {
-        if (directWriteRoute()) return invoke<ActionResult>("disable_external_instruction", { configDir: configDir || null });
+      async () => {
+        if (await directWriteRoute()) return invoke<ActionResult>("disable_external_instruction", { configDir: configDir || null });
         return gatewayControl("PUT", "/state/instruction", { enabled: false, content: "", injection_mode: promptInjectionMode, expected_version: gatewayVersion("instruction") }) as Promise<ActionResult>;
       },
       handleActionResult,
@@ -1587,7 +1649,7 @@ function App() {
   const enableSavedPrompt = (id: string) =>
     call(
       async () => {
-        if (directWriteRoute()) return invoke<ActionResult>("enable_saved_prompt", { configDir: configDir || null, id, injectionMode: promptInjectionMode });
+        if (await directWriteRoute()) return invoke<ActionResult>("enable_saved_prompt", { configDir: configDir || null, id, injectionMode: promptInjectionMode });
         const prompt = savedPrompts.find((item) => item.id === id);
         if (!prompt) throw new Error("INSTRUCTION_TEMPLATE_NOT_FOUND: 提示词不存在");
         await gatewayControl("PUT", "/state/instruction", { enabled: true, template_id: `saved:${id}`, content: prompt.content, injection_mode: promptInjectionMode, expected_version: gatewayVersion("instruction") });
@@ -1744,7 +1806,9 @@ function App() {
       async () => {
         let provider = pendingProvider;
         if (!providerTomlDirty) {
-          const draftSource = providerForm.tomlConfig?.trim() || state?.configText?.trim() || "";
+          const draftSource = providerForm.tomlConfig?.trim()
+            || (!gatewayModeActive ? state?.configText?.trim() : "")
+            || "";
           const providerForDraft = normalizedProviderForm(draftSource);
           const latestDraft = await invoke<string>("build_provider_toml_draft", {
             provider: providerForDraft,
@@ -1756,8 +1820,11 @@ function App() {
         const applyAfterSave = editingDetectedProvider
           || Boolean(editingProviderId && editingProviderId === effectiveActiveProviderId);
         let applied: ActionResult | null = null;
-        ensureGatewayStateKnown();
-        if (gatewayProcess?.managedByCodexX && gatewayProcess.running && applyAfterSave) {
+        const currentGateway = await readGatewayProcessState();
+        if (currentGateway.degraded) {
+          throw new Error("GATEWAY_DEGRADED: gateway recovery is required before changing live configuration");
+        }
+        if (currentGateway.managedByCodexX && currentGateway.running && applyAfterSave) {
           await gatewayControl("PUT", "/state/provider", {
             provider_id: provider.id,
             provider_name: provider.providerName,
@@ -1765,7 +1832,7 @@ function App() {
             model: provider.model,
             wire_api: provider.wireApi,
             api_key: provider.apiKey || undefined,
-            expected_version: gatewayVersion("provider"),
+            expected_version: (currentGateway.state?.provider as Record<string, unknown> | undefined)?.version,
           });
           await invoke<SavedProvider>("save_provider", { provider });
         } else if (applyAfterSave) {
@@ -1774,7 +1841,7 @@ function App() {
           await invoke<SavedProvider>("save_provider", { provider });
         }
         const providerList = await invoke<SavedProvider[]>("list_saved_providers");
-        return { applied, providerList, gatewayApplied: Boolean(gatewayProcess?.managedByCodexX && gatewayProcess.running && applyAfterSave) };
+        return { applied, providerList, gatewayApplied: Boolean(currentGateway.managedByCodexX && currentGateway.running && applyAfterSave) };
       },
       ({ applied, providerList, gatewayApplied }) => {
         if (applied) handleActionResult(applied);
@@ -1795,7 +1862,16 @@ function App() {
   const switchProvider = (provider: SavedProvider) =>
     call(
       async () => {
-        if (directWriteRoute()) return { result: await applyProviderConfig(provider), gateway: false };
+        // The polling state can still describe the stopped gateway immediately
+        // after startup. Read the authoritative process state before choosing
+        // the write path, otherwise this click can overwrite the gateway route.
+        const currentGateway = await readGatewayProcessState();
+        if (currentGateway.degraded) {
+          throw new Error("GATEWAY_DEGRADED: gateway recovery is required before changing live configuration");
+        }
+        if (!gatewayUsesRuntime(currentGateway)) {
+          return { result: await applyProviderConfig(provider), gateway: false };
+        }
         await gatewayControl("PUT", "/state/provider", {
           provider_id: provider.id,
           provider_name: provider.providerName,
@@ -1803,9 +1879,10 @@ function App() {
           model: provider.model,
           wire_api: provider.wireApi,
           api_key: provider.apiKey || undefined,
-          expected_version: gatewayVersion("provider"),
+          expected_version: (currentGateway.state?.provider as Record<string, unknown> | undefined)?.version,
         });
         await invoke<SavedProvider>("save_provider", { provider });
+        await readGatewayProcessState();
         return { result: null, gateway: true };
       },
       ({ result, gateway }) => {
@@ -1881,7 +1958,7 @@ function App() {
   const switchOfficialProvider = () =>
     call(
       async () => {
-        if (directWriteRoute()) return { result: await invoke<ActionResult>("switch_official_provider", { configDir: configDir || null }), gateway: false };
+        if (await directWriteRoute()) return { result: await invoke<ActionResult>("switch_official_provider", { configDir: configDir || null }), gateway: false };
         await gatewayControl("PUT", "/state/provider", {
           provider_id: "openai-official",
           provider_name: "OpenAI Official",
@@ -1906,7 +1983,7 @@ function App() {
         const draft = await invoke<OfficialConfigDraft | null>("get_official_config_draft", {
           configDir: configDir || null,
         });
-        if (!directWriteRoute()) {
+        if (!(await directWriteRoute())) {
           await gatewayControl("PUT", "/state/provider", {
             provider_id: "openai-official",
             provider_name: "OpenAI Official",
@@ -1963,7 +2040,7 @@ function App() {
   const resetOfficialProvider = () =>
     call(
       async () => {
-        if (!directWriteRoute()) {
+        if (!(await directWriteRoute())) {
           await gatewayControl("PUT", "/state/provider", {
             provider_id: "openai-official",
             provider_name: "OpenAI Official",
@@ -2382,7 +2459,7 @@ function App() {
   const saveOfficialConfig = () =>
     call(
       async () => {
-        if (!directWriteRoute()) {
+        if (!(await directWriteRoute())) {
           await gatewayControl("PUT", "/state/provider", {
             provider_id: "openai-official",
             provider_name: "OpenAI Official",
@@ -2411,7 +2488,7 @@ function App() {
     );
 
   const openAddProvider = () => {
-    const liveToml = state?.configText?.trim() || "";
+    const liveToml = gatewayModeActive ? "" : state?.configText?.trim() || "";
     const next = {
       ...blankProviderForm,
       model: state?.model?.trim() || blankProviderForm.model,
@@ -2466,7 +2543,7 @@ function App() {
       baseUrl: provider.baseUrl,
       model: provider.model,
       apiKey: provider.apiKey || "",
-      tomlConfig: state?.configText?.trim() || "",
+      tomlConfig: gatewayModeActive ? "" : state?.configText?.trim() || "",
       wireApi: provider.wireApi || "responses",
       requiresOpenaiAuth: provider.requiresOpenaiAuth,
     };
@@ -2482,7 +2559,7 @@ function App() {
     try {
       if (isCurrent) {
         let result: ActionResult | null = null;
-        if (!directWriteRoute()) {
+        if (!(await directWriteRoute())) {
           await gatewayControl("PUT", "/state/provider", {
             provider_id: "openai-official",
             provider_name: "OpenAI Official",
@@ -2779,6 +2856,7 @@ function App() {
                 lang={lang}
                 copy={getProviderPageCopy(lang)}
                 mode={providerMode}
+                gatewayMode={gatewayModeActive}
                 providerRows={providerPageRows}
                 loading={loading}
                 testingId={providerTestingId}

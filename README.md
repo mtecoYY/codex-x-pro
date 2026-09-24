@@ -405,44 +405,8 @@ Codex-X-Pro 现在不只是“几套内置 Prompt”的启动器，而是一个�
 - Provider 编辑页可直接编辑完整 TOML
 - 保存后同步到 Codex 配置目录
 
-### 6. 逆向 Skills 导航
 
-<div align="center">
-  <a href="https://yynxxxxx.github.io/Codex-X-Pro/">
-    <img src="https://img.shields.io/badge/Codex--X--Pro-在线逆向%20Skills%20导航-0ea5e9?style=for-the-badge&logo=githubpages&logoColor=white" alt="Codex-X-Pro 在线逆向 Skills 导航" />
-  </a>
-</div>
-
-<br />
-
-<table>
-  <tr>
-    <td width="55%">
-      <b>在线教程页</b>：解释什么是“破甲”、Codex-X-Pro 如何启用 GPT-5.5 / unrestricted jeli、以及如何搭配不同领域的逆向 Skills。
-      <br /><br />
-      <b>分类覆盖</b>：Android APK / Windows EXE / Web 协议逆向。
-      <br /><br />
-      <b>内容包含</b>：Skill 用途、安装方式、来源地址、推荐使用流程。
-    </td>
-    <td width="45%">
-      <ul>
-        <li>🧩 GPT-5.5 / unrestricted jeli 使用流程</li>
-        <li>📱 Android APK 逆向 Skills</li>
-        <li>🪟 Windows EXE / DLL 逆向 Skills</li>
-        <li>🌐 Web / API / 协议逆向 Skills</li>
-        <li>📋 安装命令一键复制</li>
-      </ul>
-    </td>
-  </tr>
-</table>
-
-<p align="center">
-  <a href="https://yynxxxxx.github.io/Codex-X-Pro/">
-    <b>🚀 打开 Codex-X-Pro 逆向 Skills 导航</b>
-  </a>
-</p>
-
-### 7. 跨平台桌面软件
+### 6. 跨平台桌面软件
 
 - macOS Apple Silicon `.dmg`
 - macOS Intel `.dmg`

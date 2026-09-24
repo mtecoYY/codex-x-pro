@@ -41,7 +41,7 @@ wire_api = "responses"
 现有链路为：
 
 ```text
-Codex -> 127.0.0.1:8787 -> Python 网关 -> https://newapi.gogogogoapp.mom
+Codex -> 127.0.0.1:8787 -> Python 网关 -> 测试上游（通过本地配置提供）
 ```
 
 现有链路中的 Python 网关是当前用户自己的独立工具，不是 Codex-X-Pro 仓库中的业务模块。Codex-X-Pro

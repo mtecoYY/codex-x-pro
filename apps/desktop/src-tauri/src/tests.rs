@@ -3667,7 +3667,7 @@ model_provider = "magicai-1782956845071"
 
 [model_providers.magicai-1782956845071]
 name = "MagicAI"
-base_url = "https://sky1818.com"
+base_url = "https://provider-a.example.test/v1"
 wire_api = "responses"
 requires_openai_auth = true
 "#,
@@ -3685,13 +3685,13 @@ model_provider = "sky2api-1782194988817"
 
 [model_providers.magicai-1782956845071]
 name = "MagicAI"
-base_url = "https://sky1818.com"
+base_url = "https://provider-a.example.test/v1"
 wire_api = "responses"
 requires_openai_auth = true
 
 [model_providers.sky2api-1782194988817]
 name = "Sky2api"
-base_url = "https://ikuncode.site/v1"
+base_url = "https://provider-b.example.test/v1"
 wire_api = "responses"
 requires_openai_auth = true
 "#,
@@ -3714,11 +3714,11 @@ requires_openai_auth = true
     let magic = build_ccswitch_codex_provider(&magic_row, &sections).expect("magic");
 
     assert_eq!(sky.provider_name, "Sky2api");
-    assert_eq!(sky.base_url, "https://ikuncode.site/v1");
+    assert_eq!(sky.base_url, "https://provider-b.example.test/v1");
     assert_eq!(sky.api_key.as_deref(), Some("sk-sky"));
 
     assert_eq!(magic.provider_name, "MagicAI");
-    assert_eq!(magic.base_url, "https://sky1818.com");
+    assert_eq!(magic.base_url, "https://provider-a.example.test/v1");
     assert_eq!(magic.api_key.as_deref(), Some("sk-magic"));
 }
 

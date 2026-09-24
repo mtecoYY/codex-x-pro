@@ -138,3 +138,27 @@ test("gateway request adapter covers every supported control method", async () =
     ],
   );
 });
+
+test("provider switching refreshes gateway ownership before selecting a write path", async () => {
+  const sourceRoot = fileURLToPath(new URL("../src/", import.meta.url));
+  const source = await readFile(join(sourceRoot, "main.tsx"), "utf8");
+  const switchStart = source.indexOf("const switchProvider =");
+  assert.notEqual(switchStart, -1);
+  const switchBody = source.slice(switchStart, source.indexOf("const resetAvailableProviderModels", switchStart));
+  const refreshIndex = switchBody.indexOf("await readGatewayProcessState()");
+  const runtimeRequestIndex = switchBody.indexOf('gatewayControl("PUT", "/state/provider"');
+  assert.notEqual(refreshIndex, -1, "provider switching must read current gateway state");
+  assert.ok(refreshIndex < runtimeRequestIndex, "gateway state must be read before runtime provider update");
+  assert.doesNotMatch(switchBody, /directWriteRoute\(\)/, "provider switching must not use stale cached route state");
+});
+
+test("all gateway route decisions use the authoritative async resolver", async () => {
+  const sourceRoot = fileURLToPath(new URL("../src/", import.meta.url));
+  const source = await readFile(join(sourceRoot, "main.tsx"), "utf8");
+  const calls = [...source.matchAll(/directWriteRoute\(\)/g)];
+  assert.ok(calls.length > 0);
+  for (const match of calls) {
+    const before = source.slice(Math.max(0, match.index - 12), match.index);
+    assert.match(before, /await\s*$/);
+  }
+});

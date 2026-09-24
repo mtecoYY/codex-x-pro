@@ -119,7 +119,7 @@ describe("GatewayPage", () => {
       input: {
         listenHost: "127.0.0.1",
         listenPort: 8788,
-        upstream: "https://newapi.gogogogoapp.mom",
+        upstream: "http://127.0.0.1:19090",
         configDir: "C:/Codex-Test",
       },
     }));
@@ -302,7 +302,7 @@ describe("GatewayPage", () => {
     const view = render(<GatewayPage active lang="en" />);
     await screen.findByRole("button", { name: "Start gateway" });
 
-    fireEvent.change(screen.getByDisplayValue("https://newapi.gogogogoapp.mom"), {
+    fireEvent.change(screen.getByDisplayValue("http://127.0.0.1:19090"), {
       target: { value: "http://127.0.0.1:19090" },
     });
     fireEvent.change(screen.getByDisplayValue("8787"), { target: { value: "8888" } });

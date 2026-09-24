@@ -579,6 +579,18 @@ fn runtime_auth_bytes(provider: &Value, current: Option<&[u8]>) -> Result<Option
         })
 }
 
+fn auth_api_key_for_config(path: &Path) -> Option<String> {
+    let auth_path = path.parent()?.join("auth.json");
+    let bytes = fs::read(auth_path).ok()?;
+    let document = serde_json::from_slice::<Value>(&bytes).ok()?;
+    document
+        .get("OPENAI_API_KEY")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
 fn provider_from_config(path: &Path, original: &[u8], fallback: &str) -> Result<Value> {
     let text = std::str::from_utf8(original).map_err(|error| {
         CodexxError::Config(format!(
@@ -607,9 +619,11 @@ fn provider_from_config(path: &Path, original: &[u8], fallback: &str) -> Result<
         .and_then(|item| item.get("name"))
         .and_then(|item| item.as_str())
         .unwrap_or(provider_id.as_str());
-    Ok(
-        json!({"provider_id": provider_id, "provider_name": provider_name, "base_url": base_url, "model": model, "wire_api": "responses"}),
-    )
+    let mut provider = json!({"provider_id": provider_id, "provider_name": provider_name, "base_url": base_url, "model": model, "wire_api": "responses"});
+    if let Some(api_key) = auth_api_key_for_config(path) {
+        provider["api_key"] = Value::String(api_key);
+    }
+    Ok(provider)
 }
 
 fn read_mode_meta() -> Result<Option<GatewayModeMeta>> {
@@ -739,7 +753,7 @@ fn watchdog_task_xml_for_name(
 }
 
 fn watchdog_task_xml(input: &GatewayStartInput, intent: &Path, script: &Path) -> String {
-    watchdog_task_xml_for_name(WATCHDOG_TASK_NAME, input, intent, script)
+    watchdog_task_xml_for_name(watchdog_task_name(), input, intent, script)
 }
 
 fn utf16le_with_bom(value: &str) -> Vec<u8> {
@@ -1035,7 +1049,7 @@ fn configure_watchdog_autostart(input: &GatewayStartInput, enabled: bool) -> Res
         };
         let _ = program_command(
             Path::new("schtasks.exe"),
-            &["/End", "/TN", WATCHDOG_TASK_NAME],
+            &["/End", "/TN", watchdog_task_name()],
         )
         .output();
         let xml_path = mode_dir()?.join(format!(
@@ -1050,14 +1064,14 @@ fn configure_watchdog_autostart(input: &GatewayStartInput, enabled: bool) -> Res
                     "WATCHDOG_TASK_START_FAILED: 无法写入任务定义: {error}"
                 ))
             })?;
-            create_watchdog_task(WATCHDOG_TASK_NAME, &xml_path)
+            create_watchdog_task(watchdog_task_name(), &xml_path)
         })();
         let _ = fs::remove_file(&xml_path);
         result?;
     } else {
         let output = program_command(
             Path::new("schtasks.exe"),
-            &["/Change", "/TN", WATCHDOG_TASK_NAME, "/DISABLE"],
+            &["/Change", "/TN", watchdog_task_name(), "/DISABLE"],
         )
         .output()
         .map_err(|error| CodexxError::Config(format!("WATCHDOG_TASK_STOP_FAILED: {error}")))?;
@@ -1079,7 +1093,7 @@ fn configure_watchdog_autostart(_input: &GatewayStartInput, _enabled: bool) -> R
 fn run_watchdog_task() -> Result<()> {
     let output = program_command(
         Path::new("schtasks.exe"),
-        &["/Run", "/TN", WATCHDOG_TASK_NAME],
+        &["/Run", "/TN", watchdog_task_name()],
     )
     .output()
     .map_err(|error| CodexxError::Config(format!("WATCHDOG_TASK_START_FAILED: {error}")))?;
@@ -1936,7 +1950,7 @@ fn watchdog_task_status(desired: bool) -> WatchdogStatus {
             "$task=Get-ScheduledTask -TaskName '{}' -ErrorAction SilentlyContinue; \
              if ($null -eq $task) {{ 'Missing|False' }} \
              else {{ '{{0}}|{{1}}' -f $task.State, $task.Settings.Enabled }}",
-            WATCHDOG_TASK_NAME.replace('\'', "''")
+            watchdog_task_name().replace('\'', "''")
         );
         return program_command(
             Path::new("powershell.exe"),
@@ -1985,10 +1999,22 @@ fn watchdog_status(desired: bool) -> WatchdogStatus {
 
 const WATCHDOG_TASK_NAME: &str = "Codex-X-Pro Local Gateway";
 
+fn watchdog_task_name() -> &'static str {
+    static OVERRIDE: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    OVERRIDE
+        .get_or_init(|| {
+            std::env::var("CODEX_X_WATCHDOG_TASK_NAME")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        })
+        .as_deref()
+        .unwrap_or(WATCHDOG_TASK_NAME)
+}
+
 fn watchdog_autostart() -> bool {
     program_command(
         Path::new("schtasks.exe"),
-        &["/Query", "/TN", WATCHDOG_TASK_NAME, "/XML"],
+        &["/Query", "/TN", watchdog_task_name(), "/XML"],
     )
     .output()
     .is_ok_and(|output| {
@@ -2046,14 +2072,15 @@ pub(crate) fn start_watchdog(input: GatewayStartInput) -> Result<GatewayProcessS
         ));
     }
     set_watchdog_intent("gateway", true, input.listen_port, input.upstream.trim())?;
-    let task_snapshot = capture_scheduled_task(WATCHDOG_TASK_NAME)?;
+    let task_name = watchdog_task_name();
+    let task_snapshot = capture_scheduled_task(task_name)?;
     if let Err(error) = configure_watchdog_autostart(&input, true).and_then(|_| {
         if !watchdog_running() {
             run_watchdog_task()?;
         }
         Ok(())
     }) {
-        if let Err(rollback_error) = restore_scheduled_task(WATCHDOG_TASK_NAME, &task_snapshot) {
+        if let Err(rollback_error) = restore_scheduled_task(task_name, &task_snapshot) {
             return Err(CodexxError::Config(format!("{error}; {rollback_error}")));
         }
         return Err(error);
@@ -2066,7 +2093,7 @@ fn stop_watchdog_runtime() -> Result<()> {
     {
         let output = program_command(
             Path::new("schtasks.exe"),
-            &["/End", "/TN", WATCHDOG_TASK_NAME],
+            &["/End", "/TN", watchdog_task_name()],
         )
         .output()
         .map_err(|error| CodexxError::Config(format!("WATCHDOG_TASK_STOP_FAILED: {error}")))?;
@@ -2452,6 +2479,39 @@ wire_api = "responses"
         assert!(text.contains("base_url = \"http://127.0.0.1:18787/v1\""));
         assert!(!text.contains("model_instructions_file"));
         assert!(text.contains("model = \"old-model\""));
+    }
+
+    #[test]
+    fn provider_from_config_loads_api_key_from_adjacent_auth_file() {
+        let directory = isolated_test_path("codex-x-gateway-provider-auth");
+        let _ = fs::remove_dir_all(&directory);
+        ensure_directory(&directory).expect("provider auth directory");
+        let config = directory.join("config.toml");
+        atomic_write(
+            &config,
+            br#"model_provider = "custom"
+model = "test-model"
+
+[model_providers.custom]
+name = "Custom"
+base_url = "https://provider.example/v1"
+"#,
+        )
+        .expect("provider config");
+        atomic_write(
+            &directory.join("auth.json"),
+            br#"{"OPENAI_API_KEY":"sk-test"}"#,
+        )
+        .expect("provider auth");
+
+        let provider = provider_from_config(&config, &fs::read(&config).expect("read config"), "")
+            .expect("load provider");
+        assert_eq!(
+            provider.get("api_key").and_then(Value::as_str),
+            Some("sk-test")
+        );
+
+        let _ = fs::remove_dir_all(&directory);
     }
 
     #[test]

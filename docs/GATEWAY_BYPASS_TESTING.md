@@ -140,7 +140,7 @@ SSE 断线和 history gap
 
 `18787` 和 `19090` 只是推荐值。运行前应确认端口空闲；如果被占用，改用其他临时端口，不得抢占 `8787`。
 
-在显式批准真实上游测试后，临时网关的上游地址可以复用当前设置的 `https://newapi.gogogogoapp.mom`，但监听端口仍必须使用 `18787` 等临时端口，不能把当前 Codex 的 `base_url` 改到测试端口。
+测试只能使用本地 MockServer 或明确配置的测试上游；监听端口必须使用 `18787` 等临时端口，不能把当前 Codex 的 `base_url` 改到测试端口。
 
 ## 测试工具与 agent 使用约定
 
@@ -165,7 +165,7 @@ agent 开始测试前应先判断测试目标：
 | raw-text/正文、`Content-Length`、请求头和路径 | MockServer | `http://127.0.0.1:19090` | 否 |
 | 固定响应、`401/429/5xx`、延迟和断开连接 | MockServer | `http://127.0.0.1:19090` | 否 |
 | 需要 Python 逻辑检查或注入故障 | mitmproxy/mitmdump | 本地测试上游或临时网关 | 否 |
-| DNS、TLS、认证和真实响应链路 | 临时网关 + 当前真实上游 | `https://newapi.gogogogoapp.mom` | 仅显式批准后 |
+| DNS、TLS、认证和响应链路 | 临时网关 + 测试上游 | `https://example.test` | 仅测试环境 |
 
 默认组合为：`临时网关 18787 -> MockServer 19090`。只有 MockServer 无法表达的观测或变换才使用 mitmproxy；只有需要验证真实服务行为时才启用真实上游测试。
 
@@ -414,7 +414,7 @@ Remove-Item Env:CODEX_GATEWAY_TEST_TOKEN -ErrorAction SilentlyContinue
 ```powershell
 python <外部本地网关脚本路径> `
   --listen 127.0.0.1:18787 `
-  --upstream https://newapi.gogogogoapp.mom
+  --upstream https://example.test
 ```
 
 启动前后都要检查 `18787` 的监听进程。不得修改 `C:\Users\aa\.codex\config.toml`，不得启动现有看门狗，也不得停止现有 `8787` 网关。

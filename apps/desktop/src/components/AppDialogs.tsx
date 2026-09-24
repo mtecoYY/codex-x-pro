@@ -353,9 +353,9 @@ export function StartupWizardDialog({
       className={closing ? "cx-startup-dialog cx-startup-dialog--closing" : "cx-startup-dialog"}
       footer={(
         <>
-          <Button variant="ghost" onClick={onSkip}>{isChinese ? "跳过" : "Skip"}</Button>
+          <Button data-testid="startup-skip" variant="ghost" onClick={onSkip}>{isChinese ? "跳过" : "Skip"}</Button>
           <Button variant="secondary" icon={<Settings size={16} />} onClick={onOpenSettings}>{isChinese ? "去设置" : "Settings"}</Button>
-          <Button icon={<CheckCircle2 size={16} />} onClick={onEnter}>{isChinese ? "进入 Codex-X-Pro" : "Enter Codex-X-Pro"}</Button>
+          <Button data-testid="startup-enter" icon={<CheckCircle2 size={16} />} onClick={onEnter}>{isChinese ? "进入 Codex-X-Pro" : "Enter Codex-X-Pro"}</Button>
         </>
       )}
     >

@@ -174,6 +174,7 @@ export function AppShell({
                 onClick={() => React.startTransition(() => onTabChange(item.id))}
                 aria-current={isActive ? "page" : undefined}
                 title={item.label[lang]}
+                data-testid={`nav-${item.id}`}
               >
                 <span className="cx-nav-active-mark" aria-hidden="true" />
                 <Icon size={18} strokeWidth={1.9} aria-hidden="true" />

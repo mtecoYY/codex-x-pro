@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.mjs && vitest run",
     "test:gateway": "node --test tests/gatewayCommands.test.mjs tests/gatewayState.test.mjs tests/gatewayDetail.test.mjs && vitest run && cargo test --manifest-path src-tauri/Cargo.toml --lib --locked -- --test-threads=1",
-    "test:gateway:component": "vitest run"
+    "test:gateway:component": "vitest run",
+    "test:e2e:user": "powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/test_desktop_user_lifecycle.ps1"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.8.0",

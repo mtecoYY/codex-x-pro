@@ -27,7 +27,7 @@ export function GatewayPage({ lang, configDir = "", active = true }: Props) {
     run,
   } = useGatewayPageState();
   const [portDraft, setPortDraft] = React.useState(String(port));
-  const [upstream, setUpstream] = React.useState("https://newapi.gogogogoapp.mom");
+  const [upstream, setUpstream] = React.useState("http://127.0.0.1:19090");
 
   const refresh = React.useCallback(async () => {
     const state = await refreshProcess();
@@ -114,6 +114,7 @@ export function GatewayPage({ lang, configDir = "", active = true }: Props) {
             <input
               className="ui-field__control"
               value={portDraft}
+              data-testid="gateway-port"
               onChange={(event) => setPortDraft(event.target.value)}
               disabled={managedGateway || degradedGateway || Boolean(busy)}
               inputMode="numeric"
@@ -124,33 +125,34 @@ export function GatewayPage({ lang, configDir = "", active = true }: Props) {
             <input
               className="ui-field__control"
               value={upstream}
+              data-testid="gateway-upstream"
               onChange={(event) => setUpstream(event.target.value)}
               disabled={managedGateway || degradedGateway || Boolean(busy)}
             />
           </label>
           {stateUnknown ? (
-            <Button variant="secondary" icon={<RefreshCw size={16} />} onClick={refreshPage} disabled={Boolean(busy)}>
+              <Button data-testid="gateway-refresh" variant="secondary" icon={<RefreshCw size={16} />} onClick={refreshPage} disabled={Boolean(busy)}>
               Check status
             </Button>
           ) : degradedGateway && gatewayCanRecover(processState) ? (
             <>
-              <Button variant="primary" icon={<Wrench size={16} />} onClick={recover} disabled={Boolean(busy)}>
+              <Button data-testid="gateway-recover" variant="primary" icon={<Wrench size={16} />} onClick={recover} disabled={Boolean(busy)}>
                 {busy === "recover" ? gatewayText(lang, "正在修复", "Recovering") : gatewayText(lang, "修复网关", "Recover gateway")}
               </Button>
-              <Button variant="danger" icon={<ShieldAlert size={16} />} onClick={stop} disabled={Boolean(busy) || !gatewayCanStop(processState)}>
+              <Button data-testid="gateway-stop" variant="danger" icon={<ShieldAlert size={16} />} onClick={stop} disabled={Boolean(busy) || !gatewayCanStop(processState)}>
                 {busy === "stop" ? gatewayText(lang, "正在恢复直连", "Restoring direct mode") : gatewayText(lang, "停止并恢复直连", "Stop and restore direct mode")}
               </Button>
             </>
           ) : gatewayCanStart(processState) ? (
-            <Button variant="primary" icon={<Power size={16} />} onClick={start} disabled={Boolean(busy)}>
+            <Button data-testid="gateway-start" variant="primary" icon={<Power size={16} />} onClick={start} disabled={Boolean(busy)}>
               {busy === "start" ? gatewayText(lang, "正在启动", "Starting") : gatewayText(lang, "启动网关", "Start gateway")}
             </Button>
           ) : (
-            <Button variant="danger" icon={<Power size={16} />} onClick={stop} disabled={Boolean(busy)}>
+            <Button data-testid="gateway-stop" variant="danger" icon={<Power size={16} />} onClick={stop} disabled={Boolean(busy)}>
               {busy === "stop" ? gatewayText(lang, "正在停止", "Stopping") : gatewayText(lang, "停止网关", "Stop gateway")}
             </Button>
           )}
-          <Button variant="secondary" icon={<RefreshCw size={16} />} onClick={refreshPage} disabled={Boolean(busy)}>
+          <Button data-testid="gateway-refresh" variant="secondary" icon={<RefreshCw size={16} />} onClick={refreshPage} disabled={Boolean(busy)}>
             {gatewayText(lang, "刷新", "Refresh")}
           </Button>
         </div>

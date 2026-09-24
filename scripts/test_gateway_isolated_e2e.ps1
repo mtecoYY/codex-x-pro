@@ -5,7 +5,8 @@ param(
     [string]$ExpectedCustomId = 'fc_custom_123',
     [int]$GatewayPort = 18787,
     [int]$MockServerPort = 19090,
-    [string]$MockServerJar = ''
+    [string]$MockServerJar = '',
+    [string]$ExpectedUpstreamToken = 'provider-test'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -55,14 +56,17 @@ function Stop-Listening([int]$Port) {
     }
 }
 
-function Get-HeaderValues($Request, [string]$Name) {
+function Get-HeaderValue($Request, [string]$Name) {
     $property = $Request.headers.PSObject.Properties |
         Where-Object { $_.Name -ieq $Name } |
         Select-Object -First 1
     if ($null -eq $property) {
-        return @()
+        return $null
     }
-    return @($property.Value)
+    if ($property.Value -and $property.Value.PSObject.Properties['values']) {
+        return [string]$property.Value.values
+    }
+    return [string]$property.Value
 }
 
 function Read-SharedText([string]$Path) {
@@ -145,7 +149,11 @@ try {
     Wait-Listening $MockServerPort
 
     $expectation = @{
-        httpRequest = @{ method = 'POST'; path = '/v1/responses' }
+        httpRequest = @{
+            method = 'POST'
+            path = '/v1/responses'
+            headers = @{ Authorization = @{ values = @("Bearer $ExpectedUpstreamToken") } }
+        }
         httpResponse = @{
             statusCode = 200
             headers = @{ 'Content-Type' = @('application/json') }
@@ -177,6 +185,19 @@ try {
         -PassThru
     Wait-Listening $GatewayPort
 
+    Invoke-RestMethod `
+        -Uri "http://127.0.0.1:$GatewayPort/state/provider" `
+        -Method Put `
+        -ContentType 'application/json' `
+        -Body (@{
+            provider_id = 'synthetic-provider'
+            provider_name = 'Synthetic Provider'
+            base_url = "http://127.0.0.1:$MockServerPort/v1"
+            model = 'synthetic-model'
+            wire_api = 'responses'
+            api_key = $ExpectedUpstreamToken
+        } | ConvertTo-Json -Depth 10) | Out-Null
+
     if (-not [string]::IsNullOrWhiteSpace($EnableScriptId)) {
         $testResult = Invoke-RestMethod `
             -Uri "http://127.0.0.1:$GatewayPort/scripts/$EnableScriptId/test" `
@@ -200,7 +221,7 @@ try {
         -Method Post `
         -ContentType 'application/json' `
         -Headers @{
-            Authorization = 'Bearer synthetic-token'
+            Authorization = 'Bearer client-test'
             Cookie = 'synthetic-cookie'
         } `
         -Body $body
@@ -222,13 +243,17 @@ try {
     $request = $requests[0]
     $forwardedBody = [Convert]::FromBase64String([string]$request.body.rawBytes)
     $forwardedJson = [Text.Encoding]::UTF8.GetString($forwardedBody) | ConvertFrom-Json
-    $contentLengths = Get-HeaderValues $request 'Content-Length'
+    $contentLengths = @((Get-HeaderValue $request 'Content-Length'))
 
     if ($response.StatusCode -ne 200) {
         throw "Expected gateway HTTP 200, got $($response.StatusCode)"
     }
     if ($request.path -ne '/v1/responses') {
         throw "Unexpected upstream path: $($request.path)"
+    }
+    $authorization = [string](Get-HeaderValue $request 'Authorization')
+    if ($authorization.Trim() -ne "Bearer $ExpectedUpstreamToken") {
+        throw "Gateway did not forward the configured provider token"
     }
     if ($forwardedJson.model -ne 'synthetic-model') {
         throw 'Provider model was changed unexpectedly'
@@ -251,7 +276,7 @@ try {
     foreach ($path in @($mockOutput, $mockError, $gatewayOutput, $gatewayError)) {
         if (Test-Path -LiteralPath $path) {
             $log = Read-SharedText $path
-            if ($log.Contains('synthetic-token') -or $log.Contains('synthetic-cookie')) {
+            if ($log.Contains('client-test') -or $log.Contains('synthetic-cookie') -or $log.Contains($ExpectedUpstreamToken)) {
                 throw "Sensitive synthetic header leaked into test log: $path"
             }
         }

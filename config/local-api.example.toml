@@ -1,0 +1,4 @@
+# Copy this file to config/local-api.toml for local-only testing.
+# The copied file is ignored and must never be committed.
+upstream = "https://example.test"
+api_key = "<LOCAL_TEST_API_KEY>"

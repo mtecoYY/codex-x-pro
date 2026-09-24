@@ -64,11 +64,14 @@ export type ProviderCopy = {
   eyebrow: string;
   title: string;
   subtitle: string;
+  gatewaySubtitle: string;
   importLabel: string;
   addLabel: string;
   noProviders: string;
   currentLabel: string;
+  gatewayCurrentLabel: string;
   enableLabel: string;
+  gatewayEnableLabel: string;
   testLabel: string;
   editLabel: string;
   duplicateLabel: string;
@@ -143,6 +146,7 @@ export type ProvidersPageProps = {
   officialAuthRef?: Ref<HTMLTextAreaElement>;
   officialTomlRef?: Ref<HTMLTextAreaElement>;
   officialInfo: ProviderOfficialInfo;
+  gatewayMode?: boolean;
   providerAuthPreview: ReactNode;
   providerTomlDraft: string;
   providerTomlRef?: Ref<HTMLTextAreaElement>;
@@ -236,6 +240,7 @@ function ActionIconButton({
 
 function ListPage({
   copy,
+  gatewayMode = false,
   providerRows,
   loading,
   testingId,
@@ -248,7 +253,7 @@ function ListPage({
   onEditProvider,
   onDuplicateProvider,
   onDeleteProvider,
-}: Pick<ProvidersPageProps, "copy" | "providerRows" | "loading" | "testingId" | "actionBusy" | "onImportCcSwitch" | "onAddProvider" | "onRestoreOfficial" | "onEnableProvider" | "onTestProvider" | "onEditProvider" | "onDuplicateProvider" | "onDeleteProvider">) {
+}: Pick<ProvidersPageProps, "copy" | "gatewayMode" | "providerRows" | "loading" | "testingId" | "actionBusy" | "onImportCcSwitch" | "onAddProvider" | "onRestoreOfficial" | "onEnableProvider" | "onTestProvider" | "onEditProvider" | "onDuplicateProvider" | "onDeleteProvider">) {
   const [providerToDelete, setProviderToDelete] = useState<ProviderRow | null>(null);
   const [deleting, setDeleting] = useState(false);
   const providerActionsBusy = loading || Boolean(actionBusy);
@@ -273,7 +278,7 @@ function ListPage({
         <div className="cx-providers-header-copy">
           <div className="cx-providers-eyebrow">{copy.eyebrow}</div>
           <h2>{copy.title}</h2>
-          <p>{copy.subtitle}</p>
+          <p>{gatewayMode ? copy.gatewaySubtitle : copy.subtitle}</p>
         </div>
         <div className="cx-providers-header-actions">
           <button
@@ -285,7 +290,7 @@ function ListPage({
             {actionBusy === "importCcSwitch" ? <Loader2 size={15} className="cx-providers-spin" aria-hidden="true" /> : <RefreshCw size={15} aria-hidden="true" />}
             {copy.importLabel}
           </button>
-          <button type="button" className="cx-providers-button cx-providers-button--dark" onClick={onAddProvider} disabled={providerActionsBusy}>
+          <button data-testid="provider-add" type="button" className="cx-providers-button cx-providers-button--dark" onClick={onAddProvider} disabled={providerActionsBusy}>
             <Plus size={15} aria-hidden="true" />
             {copy.addLabel}
           </button>
@@ -299,7 +304,7 @@ function ListPage({
           const testingKey = row.testingKey || `${row.source}-${row.id}`;
           const isTesting = testingId === testingKey;
           return (
-            <article className={`cx-providers-row${row.isCurrent ? " cx-providers-row--current" : ""}`} key={`${row.source}-${row.id}-${row.baseUrl}`} role="listitem">
+          <article data-testid={`provider-row-${row.id}`} data-provider-id={row.id} className={`cx-providers-row${row.isCurrent ? " cx-providers-row--current" : ""}`} key={`${row.source}-${row.id}-${row.baseUrl}`} role="listitem">
               <ProviderAvatar row={row} />
               <div className="cx-providers-row-main">
                 <div className="cx-providers-row-title">
@@ -314,14 +319,15 @@ function ListPage({
                 {row.meta && <div className="cx-providers-row-meta">{row.meta}</div>}
               </div>
               <div className="cx-providers-row-actions">
-                {row.isCurrent && <span className="cx-providers-current-badge"><span aria-hidden="true" />{copy.currentLabel}</span>}
-                <button
-                  type="button"
+                {row.isCurrent && <span className="cx-providers-current-badge"><span aria-hidden="true" />{gatewayMode ? copy.gatewayCurrentLabel : copy.currentLabel}</span>}
+                  <button
+                    data-testid={`provider-switch-${row.id}`}
+                    type="button"
                   className="cx-providers-button cx-providers-button--small cx-providers-button--secondary"
                   onClick={() => onEnableProvider(row)}
                   disabled={providerActionsBusy || row.isCurrent}
                 >
-                  {copy.enableLabel}
+                  {gatewayMode ? copy.gatewayEnableLabel : copy.enableLabel}
                 </button>
                 {row.source === "official" && (
                   <ActionIconButton
@@ -549,6 +555,7 @@ function ProviderForm({
           <Field label={copy.apiKeyLabel} className="cx-providers-field--full">
             <div className="cx-providers-secret-input">
               <input
+                data-testid="provider-api-key"
                 type={apiKeyVisible ? "text" : "password"}
                 value={providerForm.apiKey}
                 onChange={(event) => onApiKeyChange(event.target.value)}
@@ -560,11 +567,12 @@ function ProviderForm({
               </button>
             </div>
           </Field>
-          <Field label={copy.baseUrlLabel} className="cx-providers-field--full"><input value={providerForm.baseUrl} onChange={(event) => onBaseUrlChange(event.target.value)} disabled={formBusy} /></Field>
-          <Field label={copy.nameLabel}><input value={providerForm.providerName} onChange={(event) => onProviderNameChange(event.target.value)} disabled={formBusy} /></Field>
+          <Field label={copy.baseUrlLabel} className="cx-providers-field--full"><input data-testid="provider-base-url" value={providerForm.baseUrl} onChange={(event) => onBaseUrlChange(event.target.value)} disabled={formBusy} /></Field>
+          <Field label={copy.nameLabel}><input data-testid="provider-name" value={providerForm.providerName} onChange={(event) => onProviderNameChange(event.target.value)} disabled={formBusy} /></Field>
           <Field label={copy.modelLabel}>
             <div className="cx-providers-model-input-row">
               <input
+                data-testid="provider-model"
                 value={providerForm.model}
                 list={availableModels.length ? modelListId : undefined}
                 aria-label={copy.modelLabel}
@@ -635,7 +643,7 @@ function ProviderForm({
       </section>
 
       <div className="cx-providers-form-actions cx-providers-form-actions--save">
-        <button type="button" className="cx-providers-button cx-providers-button--primary" onClick={onSaveProvider} disabled={formBusy}>
+        <button data-testid="provider-save" type="button" className="cx-providers-button cx-providers-button--primary" onClick={onSaveProvider} disabled={formBusy}>
           {loading ? <Loader2 size={15} className="cx-providers-spin" aria-hidden="true" /> : <CheckCircle2 size={15} aria-hidden="true" />}
           {loading ? copy.savingLabel : copy.saveLabel}
         </button>

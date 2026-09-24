@@ -22,6 +22,8 @@ apps/desktop/src-tauri/gen/schemas/
 # Local env / secrets
 .env
 .env.*
+config/local-api.toml
+config/local-api.json
 *.local
 apple cert/
 *.p12

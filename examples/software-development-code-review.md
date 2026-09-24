@@ -45,3 +45,12 @@
 * 可执行的修复方向
 
 然后列出必要的开放问题或假设，最后给出简短变更摘要。若没有发现，明确写“未发现需要阻止合并的问题”，并说明仍未覆盖的测试或残余风险。
+
+## Secrets, API Targets, And Commit Boundary
+
+- Never write or commit real API URLs, production or internal domains/IPs, long `sk-*` API keys, redeemable card codes, bearer tokens, cookies, passwords, private keys, or other credentials in source, tests, fixtures, docs, logs, screenshots, Playwright snapshots, reports, or prompt examples.
+- Real local values may only be loaded at runtime from environment variables or ignored files such as `config/local-api.toml`, `config/local-api.json`, or `.env.local`; never add those files to Git.
+- Use `example.test`, `127.0.0.1`, MockServer, and short synthetic placeholders such as `sk-test` in examples and tests. Do not use long strings that resemble live credentials. Short semantic test values are not secrets.
+- Redact request/response bodies and headers before logging or exporting; never expose full authorization values. Keep only safe prefixes or suffixes when identification is necessary.
+- Before every commit, scan the full worktree and staged diff (`git diff --cached`) for URLs, credentials, and secret-shaped values. Inspect relevant history when a leak is suspected.
+- If a real credential or private target is found, stop propagating it, remove it from current files, revoke or rotate it, and report whether Git history requires cleanup. Removing a value from the latest file alone is not historical erasure.
